@@ -70,8 +70,10 @@ success), and must be served on port 80 with a working progress bar and renders.
 - Installed app folder on console: `/data/homebrew/PPSA90002/`
   containing `eboot.bin`, `sce_module/libc.prx`, `sce_sys/param.json`,
   `sce_sys/icon0.png`.
-- Console log file: `<state dir>/playkit.log`, where the state dir is the game
-  folder `/data/homebrew/PPSA90002` when it is writable, else `/download0`
+- Console log file: `<state dir>/playkit.log`. The state dir is the first folder
+  the app can really write to: `/app0` (the game folder `/data/homebrew/PPSA90002`),
+  then that path itself, then `/download0`. Verified on the console: log and
+  `favicons/` appear inside `/data/homebrew/PPSA90002`.
   (fallback `/app0/playkit.log`). Every file the app creates goes in that
   folder: `favicons/`, `downloads/`, `bookmarks.txt`. `PLAYKIT_STATE_DIR`
   overrides it, which is how host builds and tests use a scratch folder.
