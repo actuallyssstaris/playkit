@@ -398,14 +398,14 @@ The progress bar is computed in the page script from the tags:
 Percent = `round((done + active*0.5) / total * 100)`.
 At handover: 35 done, 4 active, 2 todo, **90 %**.
 
-The second bar is the live JavaScriptCore build and is *not* hand-maintained.
-It polls `build.json` every 10 s: the local file written by
-`tools/build-progress.sh` while a build runs here, otherwise the copy CI
-force-pushes to the `build-status` branch
+The second block is the live JavaScriptCore build with two rows, neither
+hand-maintained, both polled every 10 s: **This machine** reads the local
+`build.json` written by `tools/build-progress.sh`, and **GitHub Actions** reads
+the copy the workflow force-pushes to the `build-status` branch
 (`raw.githubusercontent.com/actuallyssstaris/playkit/build-status/build.json`,
 fetched with a cache-busting query). `status/build.json` is gitignored.
-Keep the writer running during long builds or the bar goes stale after 3
-minutes and falls back to the remote copy.
+Keep the local writer running during long builds or that row shows "No local
+build right now".
 
 Only put an item under "Done and verified" when it is actually built and, where
 applicable, observed on the console. Keep the note text specific: commands,
