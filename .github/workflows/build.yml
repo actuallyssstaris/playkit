@@ -39,6 +39,7 @@ jobs:
 
       - name: Verify signed eboot
         run: |
+          ls -la dist/PPSA90002/
           test -f dist/PPSA90002/eboot.bin
           test -f dist/PPSA90002/param.json
           test -f dist/PPSA90002/sce_module/libc.prx
