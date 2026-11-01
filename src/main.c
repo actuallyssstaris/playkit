@@ -40,7 +40,10 @@ void ps5_log(const char *format, ...)
     va_list ap;
 
     if (log_stream == NULL) {
-        log_stream = fopen("/data/playkit.log", "w");
+        char path[300];
+
+        ps5_state_path(path, sizeof(path), "playkit.log");
+        log_stream = fopen(path, "w");
         if (log_stream == NULL) {
             log_stream = fopen("/app0/playkit.log", "w");
         }
@@ -78,9 +81,10 @@ static uint32_t now_ms(void)
 
 static void ensure_writable_state(void)
 {
-    /* /download0 is the title's persistent writable area. */
-    mkdir("/download0", 0777);
-    setenv("HOME", PS5_STATE_DIR, 1);
+    /* One folder for everything the app writes: the game folder when the title
+     * runs from /data/homebrew, otherwise /download0. */
+    (void)ps5_state_dir();
+    setenv("HOME", ps5_state_dir(), 1);
 }
 
 static const char *const shell_font_dirs[] = {"/app0/assets/fonts", "assets/fonts"};
@@ -212,7 +216,10 @@ int main(void)
     ensure_writable_state();
     ps5_log("state ok\n");
 
-    if (!favicons_init("/download0/favicons"))
+    char favicon_dir[300];
+
+    ps5_state_path(favicon_dir, sizeof(favicon_dir), "favicons");
+    if (!favicons_init(favicon_dir))
         ps5_log("favicons: worker unavailable, using fallback icons\n");
 
     if (!webkit_init()) {

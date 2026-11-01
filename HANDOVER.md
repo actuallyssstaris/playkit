@@ -70,7 +70,11 @@ success), and must be served on port 80 with a working progress bar and renders.
 - Installed app folder on console: `/data/homebrew/PPSA90002/`
   containing `eboot.bin`, `sce_module/libc.prx`, `sce_sys/param.json`,
   `sce_sys/icon0.png`.
-- Console log file: `/data/playkit.log` (fallback `/app0/playkit.log`).
+- Console log file: `<state dir>/playkit.log`, where the state dir is the game
+  folder `/data/homebrew/PPSA90002` when it is writable, else `/download0`
+  (fallback `/app0/playkit.log`). Every file the app creates goes in that
+  folder: `favicons/`, `downloads/`, `bookmarks.txt`. `PLAYKIT_STATE_DIR`
+  overrides it, which is how host builds and tests use a scratch folder.
 
 ## 4. Current state (what actually works)
 
@@ -121,7 +125,7 @@ entering run loop
     re-theme.
   - **Favicon fetcher** (`src/favicons.c` / `.h`): async libcurl worker fetches
     `/favicon.ico` per site (https then http), decodes ICO/PNG/DIB, scales to
-    64x64, caches RGBA under `/download0/favicons`. Worker stays alive on a
+    64x64, caches RGBA under `<state dir>/favicons`. Worker stays alive on a
     condition variable so prefetches queued after init are served. Home tiles
     draw the fetched icon with a globe fallback.
   - **Virtual cursor / crosshair**: left stick moves the crosshair; the touchpad
@@ -154,7 +158,7 @@ src/ps5_tiling.h        pure tiling math (16-byte pixel groups, 128x128 blocks)
 src/ps5_pad.c           scePad init via user service, polling, button mapping
 src/ps5_heap.c/h        sceLibcMspace heap (~384 MiB), malloc wrappers
 src/ps5.h               console imports (VideoOut, Pad, UserService, kernel)
-src/ps5_paths.h         /download0 state paths
+src/ps5_paths.h/.c      writable state root (game folder, else /download0)
 src/webkit_glue.c       diagnostic painter; later real WebKit paint bridge
 src/webkit_glue.h       browser API surface used by main
 Makefile                `make app`, `make deploy`, `make undeploy`
@@ -236,7 +240,7 @@ To fetch the tiny log (about 300 bytes, acceptable):
 
 ```sh
 curl -s -u anonymous:codex \
-  "ftp://184.145.228.235:2121/data/playkit.log"
+  "ftp://192.168.2.15:2121/data/homebrew/PPSA90002/playkit.log"
 ```
 
 ## 9. Launch failures already diagnosed — do not repeat
@@ -378,7 +382,8 @@ relative paths.
    tabs, on-screen keyboard, bookmarks, downloads, menu. Remaining: wire its
    navigation actions to real WebKit history and page loads, and decide whether
    to keep the shell keyboard or use `sceCommonDialog` for page fields.
-5. **Downloads, cookies, storage.** Data stores under `/download0`.
+5. **Downloads, cookies, storage.** Data stores under the state dir (the game
+   folder on a dev console, `/download0` otherwise).
 6. **ps5-opengl backend (optional fast path).** Build the SDK in
    `/tmp/opencode/ps5-opengl` (`make sdk-gl46`), link `libPS5OpenGL.a` and the
    AGC modules, and swap the CPU tiler for EGL + `eglSwapBuffers` behind the same
@@ -419,7 +424,8 @@ relative paths.
 2. Check the remote eboot size via FTP metadata; it must be 18,153 bytes.
 3. Ask the user to launch PlayKit from the home screen. They do this manually;
    Remote Play input is view-only.
-4. After launch, fetch `/data/playkit.log` (small) and read the last line.
+4. After launch, fetch `/data/homebrew/PPSA90002/playkit.log` (small) and read
+   the last line.
    `entering run loop` means the app is alive. `fatal: ...` means an init failed
    and the app called `app_exit()`.
 5. If the screen is wrong, take a Remote Play snapshot only with the user's

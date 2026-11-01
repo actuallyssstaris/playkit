@@ -17,7 +17,9 @@ set(CMAKE_NM "${PS5_PAYLOAD_SDK}/bin/llvm-nm")
 
 set(CMAKE_SYSROOT "${PS5_PAYLOAD_SDK}")
 set(CMAKE_C_FLAGS_INIT "-isystem ${PS5_PAYLOAD_SDK}/target/include -fno-stack-protector -fno-plt -femulated-tls -include /root/projects/PlayKit/platform/ps5_compat.h -isystem /root/projects/PlayKit/platform/include")
-set(CMAKE_CXX_FLAGS_INIT "-isystem ${PS5_PAYLOAD_SDK}/target/include/c++/v1 -isystem ${PS5_PAYLOAD_SDK}/target/include -fno-stack-protector -fno-plt -femulated-tls -include /root/projects/PlayKit/platform/ps5_compat.h -isystem /root/projects/PlayKit/platform/include")
+# -fno-char8_t: the SDK's libc++ types u8 string literals as char8_t, while
+# WebKit's String::fromUTF8 expects const char*. Upstream builds the same way.
+set(CMAKE_CXX_FLAGS_INIT "-isystem ${PS5_PAYLOAD_SDK}/target/include/c++/v1 -isystem ${PS5_PAYLOAD_SDK}/target/include -fno-stack-protector -fno-plt -femulated-tls -fno-char8_t -include /root/projects/PlayKit/platform/ps5_compat.h -isystem /root/projects/PlayKit/platform/include")
 set(PS5_LIB_DIR "${PS5_PAYLOAD_SDK}/target/lib")
 set(PS5_LINK_FLAGS "-L${PS5_LIB_DIR} -Wl,--whole-archive -lc++ -lc++abi -lc -lunwind -Wl,--no-whole-archive -lkernel -lSceLibcInternal -ldl")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "${PS5_LINK_FLAGS}")

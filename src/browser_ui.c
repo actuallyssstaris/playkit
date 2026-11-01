@@ -13,6 +13,7 @@
 #include "browser_ui.h"
 
 #include "favicons.h"
+#include "ps5_paths.h"
 #include "ui.h"
 
 #include <math.h>
@@ -29,12 +30,6 @@
 #define UI_MAX_BOOKMARKS 64
 #define UI_MAX_DOWNLOADS 32
 #define UI_MAX_NAME 128
-
-/* Where the shell keeps its own state. The console's writable area is
- * /download0 (main.c makes it); a host build falls back to the working
- * directory, and the tests point the environment at a scratch file. */
-#define UI_STATE_DIR "/download0"
-#define UI_DOWNLOAD_DIR UI_STATE_DIR "/downloads"
 
 typedef enum
 {
@@ -811,9 +806,14 @@ static void draw_downloads(ui_canvas *canvas)
         rows[i].detail = sizes[i];
         rows[i].current = false;
     }
-    draw_list_panel(canvas, "Downloads",
-                    "No downloads yet - file links are saved to /download0/downloads",
-                    "O back", rows, ui.download_count, ui.download_focus);
+    {
+        char empty[UI_MAX_TEXT];
+
+        snprintf(empty, sizeof(empty), "No downloads yet - file links are saved to %s",
+                 ui.download_dir);
+        draw_list_panel(canvas, "Downloads", empty, "O back", rows, ui.download_count,
+                        ui.download_focus);
+    }
 }
 
 static void layout_keys(ui_rect panel, ui_rect *out)
@@ -1761,7 +1761,12 @@ static void handle_downloads_pad(const ps5_pad_state *pad)
     }
     move_list_focus(&ui.download_focus, ui.download_count, pad);
     if (pressed(pad, PS5_PAD_CROSS))
-        browser_ui_show_status("Downloads are saved in /download0/downloads");
+    {
+        static char message[UI_MAX_TEXT];
+
+        snprintf(message, sizeof(message), "Downloads are saved in %s", ui.download_dir);
+        browser_ui_show_status(message);
+    }
 }
 
 /* ------------------------------------------------------------ public API */
@@ -1799,9 +1804,18 @@ bool browser_ui_init(int width, int height, const char *font_dir)
             return false;
     }
     build_keys();
-    resolve_state_path(ui.bookmark_path, sizeof(ui.bookmark_path),"PLAYKIT_BOOKMARKS", UI_STATE_DIR "/bookmarks.txt");
-    resolve_state_path(ui.download_dir, sizeof(ui.download_dir),
-                       "PLAYKIT_DOWNLOADS", UI_DOWNLOAD_DIR);
+    {
+        /* Shell state lives in the app's own folder (see ps5_paths.h); the
+         * tests point the environment at a scratch file. */
+        char default_path[UI_MAX_TEXT];
+
+        ps5_state_path(default_path, sizeof(default_path), "bookmarks.txt");
+        resolve_state_path(ui.bookmark_path, sizeof(ui.bookmark_path),
+                           "PLAYKIT_BOOKMARKS", default_path);
+        ps5_state_path(default_path, sizeof(default_path), "downloads");
+        resolve_state_path(ui.download_dir, sizeof(ui.download_dir),
+                           "PLAYKIT_DOWNLOADS", default_path);
+    }
     load_bookmarks();
     ui.group_enabled = true;
     copy_string(ui.group_name, sizeof(ui.group_name), "Browsing");

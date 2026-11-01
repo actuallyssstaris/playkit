@@ -42,7 +42,7 @@ Complete native app build system — the proven pattern PlayKit adapts.
 - `make app` → `tools/setup-native-dependencies.sh` (SDK + zlib) → `tools/build.sh Folder` → compile C/C++ with `prospero-clang18` wrapper → link with `prospero-lld` + `ps5-pie.ld` → convert via `ps5-native-tool` → sign → package `dist/<TITLE_ID>/` + `.zip`
 - `APP_WRAP_SYMBOLS`: `--wrap=malloc --wrap=calloc --wrap=realloc --wrap=free --wrap=posix_memalign --wrap=malloc_usable_size --wrap=fcntl`
 - PacBrew: `PACBREW_PACKAGES="libcurl openssl ..."` for prebuilt PS5 ports
-- Filesystem: `/app0` read-only (title data), `/download0` read/write persistent (cookies, storage), `/temp0` temporary (often unavailable)
+- Filesystem: `/app0` read-only (title data), `/download0` read/write persistent, `/temp0` temporary (often unavailable). PlayKit keeps everything it creates in one folder — the game folder `/data/homebrew/PPSA90002` when writable, else `/download0` — resolved once by `ps5_state_dir()` in `src/ps5_paths.c`.
 
 **Native app runtime (`tooling/native/`):**
 - `app_crt.cpp`: `_start(void *process_parameters, Destructor loader_teardown)` → `_init_env`, atexit(_fini), static ctors, `application_main(argc, argv, envp)` (asm "main"), `exit(status)`
@@ -376,7 +376,7 @@ and status pill all re-theme.
 
 **Favicon fetcher** (new, `src/favicons.c` / `.h`): async libcurl worker fetches
 `/favicon.ico` per site (https then http, 10s timeout), decodes ICO/PNG/DIB,
-scales to 64x64, caches RGBA under `/download0/favicons`. The worker stays alive
+scales to 64x64, caches RGBA under `<state dir>/favicons`. The worker stays alive
 on a condition variable so prefetches queued after `browser_ui_init` are served.
 Home tiles draw the fetched icon with a globe fallback.
 

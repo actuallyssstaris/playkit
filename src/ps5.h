@@ -25,8 +25,9 @@ extern "C"
     /* ------------------------------------------------------------------ */
     /* logging                                                             */
 
-    /* Appends one formatted line to the title's log file (/data/playkit.log,
-     * falling back to /app0). The console has no terminal for the title. */
+    /* Appends one formatted line to the title's log file, <state dir>/playkit.log
+     * (the game folder on a dev console, /download0 otherwise; /app0 as the last
+     * resort). The console has no terminal for the title. */
     void ps5_log(const char *format, ...);
 
     /* ------------------------------------------------------------------ */
