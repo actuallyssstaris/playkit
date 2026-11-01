@@ -35,3 +35,23 @@ if [[ ! -f $ROOT/third_party/icu/source/configure ]]; then
     tar -xzf "$tmp/icu.tgz" -C "$ROOT/third_party"
     rm -rf "$tmp"
 fi
+
+# Graphics dependencies. Pinned versions match the WebKit 2.48 requirements.
+fetch_tarball() {
+    local directory=$1 url=$2
+    [[ -d $ROOT/third_party/$directory ]] && return
+    echo "==> [sources] fetching $directory"
+    local tmp
+    tmp=$(mktemp -d)
+    curl -fsSL "$url" -o "$tmp/archive"
+    mkdir -p "$ROOT/third_party"
+    tar -xf "$tmp/archive" -C "$ROOT/third_party"
+    rm -rf "$tmp"
+}
+
+fetch_tarball pixman-0.42.2 \
+    https://cairographics.org/releases/pixman-0.42.2.tar.gz
+fetch_tarball cairo-1.16.0 \
+    https://cairographics.org/releases/cairo-1.16.0.tar.xz
+fetch_tarball libwpe-1.16.2 \
+    https://github.com/WebPlatformForEmbedded/libwpe/releases/download/libwpe-1.16.2/libwpe-1.16.2.tar.xz

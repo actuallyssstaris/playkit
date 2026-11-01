@@ -1,0 +1,104 @@
+name: Graphics dependencies
+
+# Pixman, Cairo and libwpe, cross-built for the console and published as one
+# artifact that the WebKit build consumes. Everything else (freetype,
+# fontconfig, harfbuzz, libpng, zlib, libxml2, ...) comes prebuilt from the
+# pinned PacBrew ports tree, so only the three libraries PacBrew does not ship
+# are built here.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tools/build-deps.sh"
+      - "tools/fetch-sources.sh"
+      - "tools/setup-pacbrew-dependencies.sh"
+      - ".github/workflows/deps.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build pixman, cairo and libwpe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    env:
+      PS5_PAYLOAD_SDK: /opt/ps5-payload-sdk
+      BUILD_LOG: /tmp/deps.log
+      JOBS: "4"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang-18 lld-18 ninja-build cmake meson pkg-config \
+            autoconf automake libtool m4 gperf wget unzip xz-utils
+
+      - name: Install PS5 payload SDK
+        run: |
+          curl -fsSL -o /tmp/ps5-payload-sdk.zip \
+            https://github.com/ps5-payload-dev/sdk/releases/latest/download/ps5-payload-sdk.zip
+          sudo unzip -q -d /opt /tmp/ps5-payload-sdk.zip
+          ls "$PS5_PAYLOAD_SDK/bin/prospero-lld"
+
+      - name: Fetch sources
+        run: bash tools/fetch-sources.sh
+
+      # 346 MB of prebuilt ports; fetching it every run would dominate the job.
+      - name: Cache prebuilt ports
+        uses: actions/cache@v4
+        with:
+          path: .deps/pacbrew
+          key: pacbrew-v0.40.2
+
+      - name: Cache built dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/ps5
+          key: deps-ps5-${{ hashFiles('tools/build-deps.sh') }}
+
+      - name: Build dependencies
+        run: |
+          set -u
+          publish() {
+            bash tools/publish-progress.sh deps "$BUILD_LOG" /tmp/build.json || true
+          }
+
+          ( while true; do
+              publish
+              sleep 30
+            done ) &
+          publisher=$!
+
+          status=0
+          bash -o pipefail -c 'bash tools/build-deps.sh 2>&1 | tee "$BUILD_LOG"' || status=$?
+
+          kill "$publisher" 2>/dev/null || true
+          publish
+          exit "$status"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Show results
+        run: ls -la build/ps5/lib/*.a
+
+      - name: Upload libraries
+        uses: actions/upload-artifact@v4
+        with:
+          name: deps-ps5
+          path: |
+            build/ps5/lib/*.a
+            build/ps5/include/**
+          if-no-files-found: error
+          retention-days: 14

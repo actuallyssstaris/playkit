@@ -22,7 +22,9 @@ permissions:
 
 concurrency:
   group: jsc-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a build that is already running: it is hours of engine
+  # compilation. A newer commit waits its turn instead.
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -74,21 +76,13 @@ jobs:
       - name: Build JavaScriptCore
         run: |
           set -u
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # The status page reads build-status/build.json from
-          # raw.githubusercontent, so the percentage moves while the job runs.
-          # One force-pushed commit keeps the branch from filling with history.
+          # The status page reads <name>.json from the build-status branch, so
+          # the bar moves while the job runs. Each workflow owns one file.
           publish() {
-            blob=$(git hash-object -w /tmp/build.json)
-            tree=$(printf '100644 blob %s\tbuild.json\n' "$blob" | git mktree)
-            commit=$(printf 'build progress\n' | git commit-tree "$tree")
-            git push --force --quiet origin "$commit:refs/heads/build-status" || true
+            bash tools/publish-progress.sh jsc "$BUILD_LOG" /tmp/build.json || true
           }
 
           ( while true; do
-              bash tools/build-progress.sh "$BUILD_LOG" /tmp/build.json ci
               publish
               sleep 30
             done ) &
@@ -99,9 +93,10 @@ jobs:
           bash -o pipefail -c 'bash tools/build-jsc.sh 2>&1 | tee "$BUILD_LOG"' || status=$?
 
           kill "$publisher" 2>/dev/null || true
-          bash tools/build-progress.sh "$BUILD_LOG" /tmp/build.json ci
           publish
           exit "$status"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Show results
         run: |

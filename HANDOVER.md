@@ -1,6 +1,6 @@
 # PlayKit handover
 
-Last updated: 2026-11-01 17:30 UTC, by the current agent. Read this file fully before
+Last updated: 2026-11-01 21:05 UTC, by the current agent. Read this file fully before
 touching anything. It contains the current state, the exact commands, and every
 failure already diagnosed so you do not repeat them.
 
@@ -154,41 +154,54 @@ entering run loop
 
 ## 5. What is running right now
 
-- **Local JavaScriptCore build**, detached, `-j1`, resumable:
+Everything heavy builds on **GitHub Actions**. The 7 GB aarch64 box is only
+for editing, host tests and the status page.
 
-  ```sh
-  tail -f /tmp/opencode/jsc-build29.log
-  ```
+- `.github/workflows/jsc.yml` — JavaScriptCore. x86-64, 4 cores, ccache and
+  ICU caches, artifact `jsc-ps5` (`libJavaScriptCore.a`, `libWTF.a`,
+  `libbmalloc.a`, the two generated LLInt headers).
+- `.github/workflows/deps.yml` — Pixman 0.42.2, Cairo 1.16.0, libwpe 1.16.2,
+  static, into `build/ps5`, artifact `deps-ps5`. The remaining graphics
+  libraries (freetype, fontconfig, harfbuzz, libpng, zlib, libxml2, libjpeg,
+  libwebp, openssl, curl) come prebuilt from the pinned PacBrew ports tree;
+  `tools/build-deps.sh` downloads and caches it (346 MB).
+- `.github/workflows/build.yml` — the app itself (`make app`), on every push.
 
-  Started 2026-11-01 17:13 UTC with
-  `export PATH=$SDK/bin:$PATH; ninja -C build/jsc -j1` after
-  `-Wl,-u,main` was added for the two LLInt tools. Reached `[158/1091]` at
-  17:23 UTC with no errors. Hours, not minutes: one clang++ at a time on 7 GB.
+Each engine workflow publishes live progress, so the page needs no manual
+refresh:
 
-- **GitHub Actions JavaScriptCore build**: `.github/workflows/jsc.yml`
-  (`workflow_dispatch`, or on pushes that touch the JSC inputs). x86-64, 4
-  cores, ccache and ICU caching, uploads `jsc-ps5` with
-  `libJavaScriptCore.a`/`libWTF.a`/`libbmalloc.a`. The first run failed on a
-  hard-coded `/root/projects/PlayKit/...` include path in
-  `cmake/ps5-toolchain.cmake`; that is now `${CMAKE_CURRENT_LIST_DIR}/..`, so
-  rerun it.
+```sh
+# inside a workflow step, every 30 s
+bash tools/publish-progress.sh jsc /tmp/jsc.log /tmp/build.json
+bash tools/publish-progress.sh deps /tmp/deps.log /tmp/build.json
+```
+
+`tools/publish-progress.sh` writes `<name>.json` on the `build-status` branch
+through the contents API (one file per workflow, so two jobs never overwrite
+each other). `tools/build-progress.sh` turns a ninja log into that JSON.
 
 - **Status page**: served on port 8000 from `status/`
-  (`cd status && python3 -m http.server 8000 --bind 127.0.0.1`). Its live
-  JavaScriptCore bar polls `build.json` every 10 s, and a local writer keeps
-  that file current:
+  (`cd status && python3 -m http.server 8000 --bind 127.0.0.1`). Rows: this
+  machine (local `build.json`), GitHub Actions JavaScriptCore
+  (`jsc.json`), GitHub Actions graphics dependencies (`deps.json`), all polled
+  every 10 s.
+- A local writer is optional but keeps the first row alive during local
+  builds:
 
   ```sh
-  while true; do bash tools/build-progress.sh /tmp/opencode/jsc-build29.log \
+  while true; do bash tools/build-progress.sh /tmp/jsc.log \
       status/build.json local; sleep 10; done
   ```
 
-  CI publishes the same document, force-pushed to the `build-status` branch, so
-  the page also updates when the build runs on GitHub.
+- Deploy to the console is `make deploy PS5_HOST=…`.
+  Checklist progress at handover: 35 done, 4 active, 2 todo, **90 %**.
 
-- App build: `.github/workflows/build.yml` runs `make app` on every push
-  (last: **success**). Deploy to the console is `make deploy PS5_HOST=…`.
-  Progress at handover: 35 done, 4 active, 2 todo, **90 %**.
+Local builds are no longer the plan. The detached `ninja -C build/jsc -j1`
+from earlier was killed by a sandbox restart (`fork: Function not implemented`
+under load) and is not running now; `build/jsc/lib/` still holds
+`libWTF.a` and `libbmalloc.a`. Do not spend hours rebuilding locally — wait for
+the `jsc-ps5` artifact. `jsc.yml` now uses `cancel-in-progress: false` so a
+push never kills a run that is already compiling.
 
 ## 6. Repo layout and ownership
 
@@ -398,14 +411,16 @@ The progress bar is computed in the page script from the tags:
 Percent = `round((done + active*0.5) / total * 100)`.
 At handover: 35 done, 4 active, 2 todo, **90 %**.
 
-The second block is the live JavaScriptCore build with two rows, neither
-hand-maintained, both polled every 10 s: **This machine** reads the local
-`build.json` written by `tools/build-progress.sh`, and **GitHub Actions** reads
-the copy the workflow force-pushes to the `build-status` branch
-(`raw.githubusercontent.com/actuallyssstaris/playkit/build-status/build.json`,
-fetched with a cache-busting query). `status/build.json` is gitignored.
-Keep the local writer running during long builds or that row shows "No local
-build right now".
+The second block is the live build list, one row per builder, none
+hand-maintained, all polled every 10 s: **This machine** reads the local
+`build.json` written by `tools/build-progress.sh`; **GitHub Actions ·
+JavaScriptCore** reads `build-status/jsc.json`; **GitHub Actions · graphics
+dependencies** reads `build-status/deps.json`. Both remote files live on the
+`build-status` branch
+(`raw.githubusercontent.com/actuallyssstaris/playkit/build-status/…`, fetched
+with a cache-busting query) and are written by `tools/publish-progress.sh`.
+`status/build.json` is gitignored. A row with no data says so instead of
+showing a stale number.
 
 Only put an item under "Done and verified" when it is actually built and, where
 applicable, observed on the console. Keep the note text specific: commands,
@@ -415,38 +430,44 @@ relative paths.
 
 ## 12. Next steps (in order)
 
-1. **Finish JavaScriptCore.** `bash tools/build-jsc.sh` is running detached
-   (`nohup`, log `/tmp/opencode/jsc-build27.log`, `-j1`). Rerun the same script
-   after a failure; it skips ICU and resumes ninja from the last target. When
-   `build/jsc/lib/libJavaScriptCore.a` exists, verify the archive and link it
-   into the app or a host test before moving on. The configuration fixes are
-   recorded in `docs/architecture.md` ("JSC build configuration"): exported
-   `PS5_PAYLOAD_SDK`, ICU installed into `build/icu-ps5/install`, `ICU_ROOT`
-   appended to `CMAKE_FIND_ROOT_PATH`, and real `char8_t` (the PlayStation
-   `HAVE_MISSING_U8STRING` override and `-fno-char8_t` are gone).
-2. **Build WebKit static libraries.** WebCore, WTF, and the WPE/WebKit layer
+1. **Finish JavaScriptCore.** On GitHub Actions: run `jsc.yml`
+   (`gh workflow run jsc.yml`, or push a change under `tools/` or `cmake/`).
+   It publishes `jsc.json` for the status page and uploads `jsc-ps5`. Download
+   the artifact with `gh run download -n jsc-ps5`, check
+   `libJavaScriptCore.a` with `llvm-ar t` and `llvm-nm`, then link it into a
+   host test before the console. Configuration history is in section 17 and
+   `docs/architecture.md` ("JSC build configuration").
+2. **Graphics dependencies.** `deps.yml` builds Pixman, Cairo and libwpe
+   (artifact `deps-ps5`, progress in `deps.json`). Next additions to
+   `tools/build-deps.sh`: glib/gobject, libsoup3, sqlite3, then the WPE
+   backend. glib needs pcre2, libffi and gettext; libsoup3 needs nghttp2 and
+   glib — those build in the same script, in that order, before WebCore.
+3. **Build WebKit static libraries.** WebCore, WTF, and the WPE/WebKit layer
    against the PlayStation toolchain, reusing the PlayStation-specific code in
-   `third_party/webkit` and `platform/ps5_compat.*`. Expect missing Sony private
-   APIs; see `docs/architecture.md` for replacements.
-3. **Replace the diagnostic painter with real page paint.** Expected path:
+   `third_party/webkit` and `platform/ps5_compat.*`. This is the point where
+   the engine links, so make it a fourth workflow (`webkit.yml`) that consumes
+   the `jsc-ps5` and `deps-ps5` artifacts instead of rebuilding them.
+   Expect missing Sony private APIs; see `docs/architecture.md` for
+   replacements.
+4. **Replace the diagnostic painter with real page paint.** Expected path:
    `WKPagePaint` into a Cairo ARGB32 image surface, then copy into the frame
    buffer that `ps5_video_present()` tiles. Sony's MiniBrowser does this without
    GL.
-4. **Browser shell.** Integrated from PlaySurf: address bar, home screen,
+5. **Browser shell.** Integrated from PlaySurf: address bar, home screen,
    tabs, on-screen keyboard, bookmarks, downloads, menu. Remaining: wire its
    navigation actions to real WebKit history and page loads, and decide whether
    to keep the shell keyboard or use `sceCommonDialog` for page fields.
-5. **Downloads, cookies, storage.** Data stores under the state dir (the game
+6. **Downloads, cookies, storage.** Data stores under the state dir (the game
    folder on a dev console, `/download0` otherwise).
-6. **ps5-opengl backend (optional fast path).** Build the SDK in
+7. **ps5-opengl backend (optional fast path).** Build the SDK in
    `/tmp/opencode/ps5-opengl` (`make sdk-gl46`), link `libPS5OpenGL.a` and the
    AGC modules, and swap the CPU tiler for EGL + `eglSwapBuffers` behind the same
    `ps5_video_present()` API. Do not break the working CPU path until the GL path
    is verified on the console.
-7. **WebKit2 multiprocess (deferred).** The current app is single-process. A
+8. **WebKit2 multiprocess (deferred).** The current app is single-process. A
    real WPE UI process needs a PS5 process launcher; see the research notes in the
    status page.
-8. **Video playback.** Practical only after the engine and shell work. Test
+9. **Video playback.** Practical only after the engine and shell work. Test
    H.264/AAC in a page; remote streaming services will likely block the user
    agent or DRM.
 
@@ -574,4 +595,41 @@ ninja -C build/jsc -j1            # or: bash tools/build-jsc.sh
 
 Outputs: `build/jsc/lib/libJavaScriptCore.a`, `libWTF.a`, `libbmalloc.a`,
 `build/icu-ps5/install/lib/libicu*.a`. Nothing is linked into the app yet.
+
+## 18. Graphics dependency build (2026-11-01)
+
+`tools/build-deps.sh` builds Pixman 0.42.2 → Cairo 1.16.0 → libwpe 1.16.2 into
+`build/ps5` (`lib/libpixman-1.a`, `libcairo.a`, `libwpe-1.0.a`, plus headers and
+`.pc` files). Traps:
+
+1. **autoconf does not know the console.** `--host=x86_64-sie-ps5` fails in
+   `config.sub` ("OS `ps5' not recognized"), so both stages configure with
+   `--host=x86_64-unknown-freebsd`. The real target comes from
+   `CC="clang-18 --target=x86_64-sie-ps5 …"`, the same trick ICU uses.
+2. **`prospero-lld` is found through `PATH`.** Without
+   `export PATH="$SDK/bin:$PATH"` every configure test fails with
+   `Executable "prospero-lld" doesn't exist!` and the confusing message
+   "C compiler cannot create executables".
+3. **PacBrew supplies everything else.** `tools/setup-pacbrew-dependencies.sh
+   --all` prints the extracted ports sysroot (cached in `.deps/pacbrew`).
+   Its `.pc` files are written for `/user/homebrew`, so
+   `PKG_CONFIG_SYSROOT_DIR` must be that tree or freetype, fontconfig and
+   harfbuzz are not found. These are pinned prebuilts: no need to rebuild them.
+4. **libwpe builds with Meson**, not autotools. The cross file is generated at
+   `build/ps5-cross.ini` on each run because it holds absolute paths.
+5. This aarch64 box is unreliable for long local builds (the sandbox returns
+   `fork: Function not implemented` under load). Use `deps.yml` on GitHub
+   Actions.
+
+Working commands:
+
+```sh
+bash tools/fetch-sources.sh    # pixman, cairo, libwpe tarballs too
+bash tools/build-deps.sh       # resumable; skips any archive that exists
+ls build/ps5/lib/*.a
+```
+
+WebKit itself still needs glib, libsoup3, sqlite3 and the WPE backend before
+WebCore can link; those are the next additions to `deps.yml`.
+
 

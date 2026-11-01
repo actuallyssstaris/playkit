@@ -74,17 +74,17 @@
   <h1>PlayKit</h1>
   <p class="sub">WebKit browser for PS5. Build checklist, updated as work lands. Last update: 2026-11-01 16:24 UTC.</p>
 
-  <p class="state"><span class="tag ok">console verified</span>PlayKit builds, signs, and deploys as a signed FSELF. GitHub Actions builds every push; the run for <code>2392d0e</code> passed. The PlaySurf browser shell is integrated: home screen with fetched favicons (all 8 sites, YouTube included), Firefox-style tab strip with tab groups, dark/light theme toggle, controller keyboard, menu, and two pointers: a crosshair that stays in the chrome and a ring page cursor that clicks the webpage. Deploy verified on the console at <code>10.15.175.8:2121</code>: PlayKit launched and reached "entering run loop". JavaScriptCore build is running locally: 672 of 2,426 targets, no errors, after fixing the ICU prefix, the CMake find root and the <code>char8_t</code> configuration.</p>
+  <p class="state"><span class="tag ok">console verified</span>PlayKit builds, signs, and deploys as a signed FSELF. GitHub Actions builds every push; the run for <code>2392d0e</code> passed. The PlaySurf browser shell is integrated: home screen with fetched favicons (all 8 sites, YouTube included), Firefox-style tab strip with tab groups, dark/light theme toggle, controller keyboard, menu, and two pointers: a crosshair that stays in the chrome and a ring page cursor that clicks the webpage. Deploy verified on the console at <code>10.15.175.8:2121</code>: PlayKit launched and reached "entering run loop". The engine now builds on GitHub Actions rather than on the 7 GB ARM box: JavaScriptCore first, then Pixman, Cairo and libwpe, with every run publishing live progress below.</p>
 
   <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
     <div class="progress-fill" id="progress-fill"></div>
   </div>
   <p class="progress-label" id="progress-label">Calculating progress…</p>
 
-  <h2>JavaScriptCore build</h2>
+  <h2>Builds</h2>
   <section class="live" id="live">
     <div class="live-row">
-      <p class="live-title">This machine</p>
+      <p class="live-title">This machine · JavaScriptCore</p>
       <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <div class="progress-fill" id="local-fill"></div>
       </div>
@@ -92,12 +92,20 @@
       <p class="live-detail" id="local-detail">Refreshes itself every 10 seconds.</p>
     </div>
     <div class="live-row">
-      <p class="live-title">GitHub Actions</p>
+      <p class="live-title">GitHub Actions · JavaScriptCore</p>
       <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-        <div class="progress-fill" id="ci-fill"></div>
+        <div class="progress-fill" id="jsc-fill"></div>
       </div>
-      <p class="progress-label" id="ci-label">No build published yet…</p>
-      <p class="live-detail" id="ci-detail">The workflow publishes its own progress.</p>
+      <p class="progress-label" id="jsc-label">No build published yet…</p>
+      <p class="live-detail" id="jsc-detail">The workflow publishes its own progress.</p>
+    </div>
+    <div class="live-row">
+      <p class="live-title">GitHub Actions · graphics dependencies</p>
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="progress-fill" id="deps-fill"></div>
+      </div>
+      <p class="progress-label" id="deps-label">No build published yet…</p>
+      <p class="live-detail" id="deps-detail">Pixman, Cairo and libwpe.</p>
     </div>
   </section>
 
@@ -232,11 +240,11 @@
     bar.setAttribute('aria-valuenow', String(percent));
   })();
 
-  /* Live JavaScriptCore build. Two rows, both polled every 10 seconds: this
-   * machine writes build.json beside the page, and the workflow force-pushes
-   * the same document to the build-status branch. Neither needs a refresh. */
+  /* Live builds. Every row polls its own JSON every 10 seconds: this machine
+   * writes build.json beside the page, and each workflow publishes its own
+   * file to the build-status branch. Nothing needs a manual refresh. */
   (() => {
-    const REMOTE = 'https://raw.githubusercontent.com/actuallyssstaris/playkit/build-status/build.json';
+    const BRANCH = 'https://raw.githubusercontent.com/actuallyssstaris/playkit/build-status/';
 
     async function load(url, bust) {
       const response = await fetch(bust ? url + '?t=' + Date.now() : url,
@@ -282,25 +290,18 @@
       if (detail) detail.textContent = '';
     }
 
-    async function refreshLocal() {
+    async function refreshRow(prefix, url, bust, empty) {
       try {
-        render('local', await load('build.json', false));
+        render(prefix, await load(url, bust));
       } catch (error) {
-        idle('local', 'No local build right now');
-      }
-    }
-
-    async function refreshRemote() {
-      try {
-        render('ci', await load(REMOTE, true));
-      } catch (error) {
-        idle('ci', 'No build published yet');
+        idle(prefix, empty);
       }
     }
 
     function refresh() {
-      refreshLocal();
-      refreshRemote();
+      refreshRow('local', 'build.json', false, 'No local build right now');
+      refreshRow('jsc', BRANCH + 'jsc.json', true, 'No build published yet');
+      refreshRow('deps', BRANCH + 'deps.json', true, 'No build published yet');
     }
 
     refresh();
