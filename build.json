@@ -1,0 +1,1 @@
+{"source": "ci", "phase": "Compile", "status": "done", "current": 2426, "total": 2426, "percent": 100, "step": "Linking CXX shared library lib/libgtest.so", "updated": "2026-11-01T20:55:49+00:00"}
