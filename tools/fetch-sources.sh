@@ -54,4 +54,4 @@ fetch_tarball pixman-0.42.2 \
 fetch_tarball cairo-1.16.0 \
     https://cairographics.org/releases/cairo-1.16.0.tar.xz
 fetch_tarball libwpe-1.16.2 \
-    https://github.com/WebPlatformForEmbedded/libwpe/releases/download/libwpe-1.16.2/libwpe-1.16.2.tar.xz
+    https://github.com/WebPlatformForEmbedded/libwpe/releases/download/1.16.2/libwpe-1.16.2.tar.xz

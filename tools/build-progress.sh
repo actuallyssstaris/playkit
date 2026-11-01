@@ -57,7 +57,11 @@ if not step:
             break
 
 # ninja stops after printing FAILED, so a failure wins over the step count.
+# Fetch and configure failures never reach ninja, so they are matched too.
 if any(line.startswith("FAILED:") for line in lines):
+    status = "failed"
+elif any(re.match(r"(configure: error:|curl: \(\d+\)|make(\[\d+\])?: \*\*\*)", line)
+         for line in lines):
     status = "failed"
 elif any("done:" in line or "Build complete" in line for line in lines):
     status = "done"

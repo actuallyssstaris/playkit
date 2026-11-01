@@ -93,6 +93,14 @@ jobs:
       - name: Show results
         run: ls -la build/ps5/lib/*.a
 
+      # A failure before the build step would otherwise leave the page showing
+      # an older run's numbers.
+      - name: Publish final progress
+        if: always()
+        run: bash tools/publish-progress.sh deps "$BUILD_LOG" /tmp/build.json || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Upload libraries
         uses: actions/upload-artifact@v4
         with:
