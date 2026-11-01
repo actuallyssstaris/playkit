@@ -1,1 +1,1 @@
-{"source": "jsc", "phase": "Compile", "status": "running", "current": 1334, "total": 2426, "percent": 55, "step": "Generating ../../JavaScriptCore/DerivedSources/WasmOps.h", "updated": "2026-11-01T21:00:55+00:00"}
+{"source": "jsc", "phase": "Compile", "status": "running", "current": 1360, "total": 2426, "percent": 56, "step": "Generating ../../JavaScriptCore/DerivedSources/IntlCollatorConstructor.lut.h", "updated": "2026-11-01T21:01:26+00:00"}
