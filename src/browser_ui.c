@@ -1114,6 +1114,28 @@ static void draw_chrome(ui_canvas *canvas)
     }
 }
 
+/* Home screen geometry, shared by the painter and the cursor hit tests so a
+ * click always lands on what the player sees. */
+static ui_rect home_search_rect(void)
+{
+    ui_rect area = content_area();
+
+    return (ui_rect){(float)ui.width * 0.5f - 500.0f, area.y + 90.0f,
+                     1000.0f, 78.0f};
+}
+
+static ui_rect home_tile_rect(int index)
+{
+    const float tile = 150.0f;
+    const float gap = 28.0f;
+    float grid_width = (float)QUICK_LINK_COUNT * tile +
+                       (float)(QUICK_LINK_COUNT - 1) * gap;
+    float grid_x = (float)ui.width * 0.5f - grid_width * 0.5f;
+
+    return (ui_rect){grid_x + (float)index * (tile + gap),
+                     content_area().y + 250.0f, tile, tile};
+}
+
 static void draw_home(ui_canvas *canvas)
 {
     ui_rect area = content_area();
@@ -1121,20 +1143,17 @@ static void draw_home(ui_canvas *canvas)
     float top = area.y;
     ui_rect search;
     float tile = 150.0f;
-    float gap = 28.0f;
-    float grid_width;
-    float grid_x;
-    float grid_y;
     int i;
 
     ui_fill_rect(canvas, area, 0.0f, theme()->page);
 
-    /* PlayKit brand above the search bar. */
-    text_at(canvas, &ui.medium, 34.0f, cx - text_width(&ui.medium, 34.0f, "PlayKit") * 0.5f,
-            top + 20.0f, theme()->text, "PlayKit");
+    /* PlayKit brand above the search bar. The baseline clears the chrome bar
+     * so the whole word stays visible. */
+    text_centred(canvas, &ui.medium, 44.0f, cx, top + 58.0f, theme()->text,
+                 "PlayKit");
 
     /* Search sits at the top of the page, under the chrome bar. */
-    search = (ui_rect){cx - 500.0f, top + 90.0f, 1000.0f, 78.0f};
+    search = home_search_rect();
     ui_shadow(canvas, search, 22.0f, 22.0f, 10.0f, theme()->shadow);
     ui_fill_rect(canvas, search, 22.0f, theme()->surface);
     ui_rect_outline(canvas, search, 22.0f, 1.0f, theme()->outline);
@@ -1148,13 +1167,9 @@ static void draw_home(ui_canvas *canvas)
         focus_ring(canvas, search, 22.0f);
 
     /* Site tiles, one row, label under each square. */
-    grid_width = (float)QUICK_LINK_COUNT * tile +
-                 (float)(QUICK_LINK_COUNT - 1) * gap;
-    grid_x = cx - grid_width * 0.5f;
-    grid_y = top + 250.0f;
     for (i = 0; i < QUICK_LINK_COUNT; i++)
     {
-        ui_rect box = {grid_x + (float)i * (tile + gap), grid_y, tile, tile};
+        ui_rect box = home_tile_rect(i);
         bool focused = (ui.screen == SCREEN_HOME && ui.home_focus == i + 1);
         ui_colour tint = ui_rgb(quick_links[i].tint);
 
@@ -1245,7 +1260,7 @@ static void draw_home(ui_canvas *canvas)
         for (i = 0; i < count; i++)
         {
             ui_button_glyph(canvas, (ui_rect){x, (float)ui.height - 58.0f, 30.0f, 30.0f},
-                            hints[i].glyph, ui_rgb(0x2e2e2e), theme()->text);
+                            hints[i].glyph, theme()->surface_high, theme()->text);
             text_at(canvas, &ui.regular, 20.0f, x + 40.0f,
                     (float)ui.height - 37.0f, theme()->text_muted, hints[i].label);
             x += widths[i] + 34.0f;
@@ -1446,34 +1461,30 @@ static void handle_home_pad(const ps5_pad_state *pad)
         open_menu();
         return;
     }
-    if (pressed(pad, PS5_PAD_TRIANGLE) || pressed(pad, PS5_PAD_TOUCH_PAD))
+    if (pressed(pad, PS5_PAD_TRIANGLE))
     {
         ui.focus = FOCUS_CHROME;
         ui.chrome_focus = CHROME_ADDRESS;
         return;
     }
 
-    /* Virtual cursor: touchpad/cross clicks what is under it. */
+    /* Virtual cursor: touchpad/cross clicks what is under it. Cross still
+     * activates the D-pad focus when it points at empty space. */
     if (pressed(pad, PS5_PAD_TOUCH_PAD) || pressed(pad, PS5_PAD_CROSS))
     {
-        float cx = (float)ui.width * 0.5f;
-        float top = (float)chrome_height();
-        float sx = cx - 500.0f, sy = top + 90.0f;
-        if (ui.cursor_x >= sx && ui.cursor_x < sx + 1000.0f &&
-            ui.cursor_y >= sy && ui.cursor_y < sy + 78.0f)
+        ui_rect search = home_search_rect();
+        int i;
+
+        if (ui.cursor_x >= search.x && ui.cursor_x < search.x + search.w &&
+            ui.cursor_y >= search.y && ui.cursor_y < search.y + search.h)
         {
             open_keyboard(true, "");
             return;
         }
-        float tile = 150.0f, gap = 28.0f;
-        float grid_width = (float)QUICK_LINK_COUNT * tile +
-                           (float)(QUICK_LINK_COUNT - 1) * gap;
-        float grid_x = cx - grid_width * 0.5f;
-        float grid_y = top + 250.0f;
-        int i;
         for (i = 0; i < QUICK_LINK_COUNT; i++)
         {
-            ui_rect box = {grid_x + (float)i * (tile + gap), grid_y, tile, tile};
+            ui_rect box = home_tile_rect(i);
+
             if (ui.cursor_x >= box.x && ui.cursor_x < box.x + box.w &&
                 ui.cursor_y >= box.y && ui.cursor_y < box.y + box.h)
             {
@@ -1482,6 +1493,8 @@ static void handle_home_pad(const ps5_pad_state *pad)
                 return;
             }
         }
+        if (pressed(pad, PS5_PAD_TOUCH_PAD))
+            return; /* touchpad click on empty space does nothing */
     }
 
     if (pressed(pad, PS5_PAD_UP) && ui.home_focus > 0)
@@ -1863,19 +1876,30 @@ bool browser_ui_handle_pad(const ps5_pad_state *pad, const ps5_pad_state *prev)
         return false;
 
     /* ------------------------------------------------ virtual cursor */
-    /* Left stick moves the cursor; a small deadzone avoids drift. */
+    /* ps5_pad_poll already normalises the sticks to -1..1, so the axis
+     * value is the direction. A small deadzone stops drift at rest. */
     {
-        const float deadzone = 0.12f;
-        float dx = pad->left_x / 127.5f - 1.0f;
-        float dy = pad->left_y / 127.5f - 1.0f;
-        if (fabsf(dx) < deadzone) dx = 0.0f;
-        if (fabsf(dy) < deadzone) dy = 0.0f;
-        ui.cursor_x += dx * 900.0f * 0.016f; /* per-frame at ~60fps */
-        ui.cursor_y += dy * 600.0f * 0.016f;
+        const float deadzone = 0.15f;
+        float dx = pad->left_x;
+        float dy = pad->left_y;
+
+        if (fabsf(dx) < deadzone)
+            dx = 0.0f;
+        if (fabsf(dy) < deadzone)
+            dy = 0.0f;
+
+        /* Square the response so small pushes are precise and full pushes
+         * cross the screen quickly. */
+        dx = dx * fabsf(dx);
+        dy = dy * fabsf(dy);
+
+        ui.cursor_x += dx * 1600.0f * (1.0f / 60.0f);
+        ui.cursor_y += dy * 1100.0f * (1.0f / 60.0f);
+
         if (ui.cursor_x < 0.0f) ui.cursor_x = 0.0f;
-        if (ui.cursor_x > (float)ui.width) ui.cursor_x = (float)ui.width;
+        if (ui.cursor_x > (float)ui.width - 1.0f) ui.cursor_x = (float)ui.width - 1.0f;
         if (ui.cursor_y < 0.0f) ui.cursor_y = 0.0f;
-        if (ui.cursor_y > (float)ui.height) ui.cursor_y = (float)ui.height;
+        if (ui.cursor_y > (float)ui.height - 1.0f) ui.cursor_y = (float)ui.height - 1.0f;
     }
 
     bool clicked = pressed(pad, PS5_PAD_TOUCH_PAD) || pressed(pad, PS5_PAD_CROSS);
@@ -2086,13 +2110,19 @@ void browser_ui_render(uint32_t *frame, int width, int height, int stride,
         draw_downloads(&canvas);
     draw_status(&canvas);
 
-    /* Crosshair / virtual cursor, always on top. */
+    /* Crosshair / virtual cursor, always on top. Dark halo plus a white cross
+     * stays visible on both themes and on top of favicons. */
     {
         float cx = ui.cursor_x, cy = ui.cursor_y;
-        float size = 16.0f;
-        ui_colour c = theme()->primary;
+        float size = 22.0f;
+        ui_colour halo = ui_with_alpha(ui_rgb(0x000000), 0.6f);
+        ui_colour c = ui_rgb(0xffffff);
+
+        ui_fill_rect(&canvas, (ui_rect){cx - 2.0f, cy - size * 0.5f, 4.0f, size}, 0.0f, halo);
+        ui_fill_rect(&canvas, (ui_rect){cx - size * 0.5f, cy - 2.0f, size, 4.0f}, 0.0f, halo);
         ui_fill_rect(&canvas, (ui_rect){cx - 1.0f, cy - size * 0.5f, 2.0f, size}, 0.0f, c);
         ui_fill_rect(&canvas, (ui_rect){cx - size * 0.5f, cy - 1.0f, size, 2.0f}, 0.0f, c);
-        ui_fill_rect(&canvas, (ui_rect){cx - 3.0f, cy - 3.0f, 6.0f, 6.0f}, 2.0f, c);
+        ui_fill_rect(&canvas, (ui_rect){cx - 3.5f, cy - 3.5f, 7.0f, 7.0f}, 3.5f, halo);
+        ui_fill_rect(&canvas, (ui_rect){cx - 1.5f, cy - 1.5f, 3.0f, 3.0f}, 1.5f, c);
     }
 }

@@ -323,7 +323,11 @@ void ui_triangle(ui_canvas *canvas, float x0, float y0, float x1, float y1,
     int max_x = (int)ceilf(maxf(x0, maxf(x1, x2)));
     int min_y = (int)floorf(minf(y0, minf(y1, y2)));
     int max_y = (int)ceilf(maxf(y0, maxf(y1, y2)));
-    float area = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
+    float area = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
+    float sign = area < 0.0f ? -1.0f : 1.0f;
+    float len0 = hypotf(x1 - x0, y1 - y0);
+    float len1 = hypotf(x2 - x1, y2 - y1);
+    float len2 = hypotf(x0 - x2, y0 - y2);
     int x, y;
 
     if (min_x < 0)
@@ -334,7 +338,7 @@ void ui_triangle(ui_canvas *canvas, float x0, float y0, float x1, float y1,
         max_x = canvas->width;
     if (max_y > canvas->height)
         max_y = canvas->height;
-    if (area == 0.0f)
+    if (area == 0.0f || len0 == 0.0f || len1 == 0.0f || len2 == 0.0f)
         return;
 
     for (y = min_y; y < max_y; y++)
@@ -345,13 +349,18 @@ void ui_triangle(ui_canvas *canvas, float x0, float y0, float x1, float y1,
         {
             float px = (float)x + 0.5f;
             float py = (float)y + 0.5f;
-            float w0 = ((x1 - px) * (y2 - py) - (x2 - px) * (y1 - py)) / area;
-            float w1 = ((x2 - px) * (y0 - py) - (x0 - px) * (y2 - py)) / area;
-            float w2 = 1.0f - w0 - w1;
+            /* Signed distance to each edge, positive inside. */
+            float d0 = sign * ((x1 - x0) * (py - y0) -
+                               (y1 - y0) * (px - x0)) / len0;
+            float d1 = sign * ((x2 - x1) * (py - y1) -
+                               (y2 - y1) * (px - x1)) / len1;
+            float d2 = sign * ((x0 - x2) * (py - y2) -
+                               (y0 - y2) * (px - x2)) / len2;
+            float edge = minf(d0, minf(d1, d2));
 
-            if (w0 >= -0.5f && w1 >= -0.5f && w2 >= -0.5f)
+            if (edge >= -1.0f)
             {
-                float coverage = clampf(minf(w0, minf(w1, w2)) + 0.5f, 0.0f, 1.0f);
+                float coverage = clampf(edge + 0.5f, 0.0f, 1.0f);
 
                 blend(&row[x], colour, coverage);
             }
