@@ -63,9 +63,9 @@
 <body>
 <main>
   <h1>PlayKit</h1>
-  <p class="sub">WebKit browser for PS5. Build checklist, updated as work lands. Last update: 2026-10-31 20:05 UTC.</p>
+  <p class="sub">WebKit browser for PS5. Build checklist, updated as work lands. Last update: 2026-11-01 21:55 UTC.</p>
 
-  <p class="state"><span class="tag work">shell landed</span>PlayKit launches on the console and shows the diagnostic frame. The PlaySurf browser shell is now integrated and host-rendered: home screen, address bar, controller keyboard, menu, tabs and downloads. The JavaScriptCore build is at 112/963 objects and currently stops on an <code>ElfW</code> shim error. Next: fix that, finish JSC, then link WebCore for real pages.</p>
+  <p class="state"><span class="tag ok">shell verified</span>PlayKit builds, signs, and deploys as a signed FSELF. GitHub Actions builds every push: <code>make app</code> produces <code>dist/PPSA90002/</code> with signed <code>eboot.bin</code>. The PlaySurf browser shell is integrated: home screen with favicon site tiles, Firefox-style tab strip with tab groups, dark/light theme toggle, controller keyboard, menu, downloads, and a virtual cursor/crosshair driven by the left stick. Console deploy verified at <code>192.168.2.15:2121</code>; log reaches "entering run loop". JSC build is in progress (paused on memmem conflict with the PS5 SDK string.h).</p>
 
   <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
     <div class="progress-fill" id="progress-fill"></div>
@@ -99,14 +99,19 @@
       <li><input type="checkbox" checked disabled><span class="label">Homebrew starter review<small class="note">Reviewed MiladRTX/ps5-homebrew-starter: same ps5-native-app-boilerplate tooling, plus APP_IMPORT_STUBS (link-only stubs for system sprx missing from the SDK) and a safe FTP deploy script. Both ported; APP_IMPORT_STUBS is the path for sceCommonDialogInitialize and other system imports.</small></span><span class="tag ok">done</span></li>
       <li><input type="checkbox" checked disabled><span class="label">FTP deploy tooling<small class="note">tools/deploy.sh now exists. make deploy PS5_HOST=&lt;console&gt; builds, uploads atomically, publishes eboot.bin and param.json last, and verifies both. make undeploy removes only this title.</small></span><span class="tag ok">done</span></li>
       <li><input type="checkbox" checked disabled><span class="label">Runs on the console<small class="note">Signed FSELF launches from /data/homebrew/PPSA90002/. Console log reaches "entering run loop": heap 384 MiB, pad opened as user 518282432, state dir ready, diagnostic renderer active. Screen shows the dark slate frame with blue border and crosshair. Fixed along the way: unsigned ELF launches, SIGSYS/CE-108255-1 from libc exit() after a pad failure, and black scanout from unregistered VideoOut buffers.</small></span><span class="tag ok">done</span></li>
-      <li><input type="checkbox" checked disabled><span class="label">Browser shell integrated<small class="note">Ported from PlaySurf: src/ui.c (SDF text, rounded boxes, icons) and src/browser_ui.c (chrome, home screen, address bar, controller keyboard, menu, tabs, bookmarks, downloads). Same pad ABI, same RGBA frame, no OpenGL. Fonts baked from Google Sans and DejaVu, packaged under assets/fonts. Host test renders every screen and passes; console run pending. Signed eboot is 62,361 bytes.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Browser shell integrated<small class="note">Ported from PlaySurf: src/ui.c (SDF text, rounded boxes, icons) and src/browser_ui.c (chrome, home screen, address bar, controller keyboard, menu, tabs, bookmarks, downloads). Same pad ABI, same RGBA frame, no OpenGL. Fonts baked from Google Sans and DejaVu, packaged under assets/fonts. Host test renders every screen and passes; console run pending.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Favicon fetcher<small class="note">src/favicons.c / .h: async libcurl worker fetches /favicon.ico (https then http), decodes ICO/PNG/DIB, scales to 64x64, caches RGBA under /download0/favicons. Worker stays alive on a condition variable so prefetches queued after init are served. Home tiles draw the fetched icon with a globe fallback.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Tab strip + tab groups<small class="note">Firefox-style strip above the chrome bar: group chip ("Browsing"), tabs with favicon + close button, "+" new-tab button, and a colored underline under the group's tabs. Groups toggle via the menu ("Tab group"). D-pad UP from chrome enters tabs; DOWN returns. Virtual cursor can click tabs, close, or new tab.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Dark / light theme<small class="note">ui_light and ui_theme in src/ui.c; menu item "Dark / light mode" toggles. Chrome, home, menu, panels, tab strip and status pill all re-theme. PlayKit brand appears above the search bar on the home screen.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Virtual cursor / crosshair<small class="note">Left stick moves a crosshair over the UI; the touchpad button or Cross clicks at the cursor position. Works on home tiles, search bar, tab strip, chrome buttons. Always drawn on top.</small></span><span class="tag ok">done</span></li>
     </ul>
   </section>
 
   <h2>In progress</h2>
   <section>
     <ul>
-      <li><input type="checkbox" disabled><span class="label">JSC static-lib build<small class="note">CMake build in build/jsc resumed and reached 112/963 objects, then stopped on a real compiler error: JSCBytecodeCacheVersion.cpp uses <code>ElfW(Nhdr)</code>, which the PS5 headers do not define. Fixing the compatibility shim, then resuming with -j1.</small></span><span class="tag work">active</span></li>
+      <li><input type="checkbox" disabled><span class="label">JSC static-lib build on GitHub Actions<small class="note">CMake build in build/jsc paused on a memmem conflict: WTF defines its own memmem but the PS5 SDK's string.h already declares one. Patched PlatformHave.h to not define HAVE_MEMMEM on PlayStation. Next: resume the build and fix any further errors.</small></span><span class="tag work">active</span></li>
+      <li><input type="checkbox" disabled><span class="label">Console favicon validation<small class="note">Favicon worker fetches /favicon.ico per home site and caches RGBA under /download0/favicons. Not yet validated on the console (needs network access from the deployed build).</small></span><span class="tag work">active</span></li>
       <li><input type="checkbox" disabled><span class="label">Phased WebKit integration<small class="note">Diagnostic screen paints directly to frame buffer via VideoOut. Next: link libJavaScriptCore.a + WPEWebKit for real page rendering. Full WebKit2 multiprocess deferred.</small></span><span class="tag work">active</span></li>
     </ul>
   </section>
@@ -148,20 +153,24 @@
       <figcaption>Reference render of the diagnostic frame, matching the pixel values the title sends to VideoOut. Confirmed on the console; a console capture replaces this once it can be taken without using mobile data.</figcaption>
     </figure>
     <figure class="render">
-      <img src="renders/shell-home.png" alt="PlayKit home screen: search field on top, a row of eight site tiles, and a bookmarks row below">
-      <figcaption>Browser shell home screen, rendered by the host test from the sources now in <code>src/</code>. Layout follows the Firefox new-tab reference: search on top, one row of site tiles with labels, then a content row. Tiles are DuckDuckGo, Wikipedia, Hacker News, GitHub, YouTube, Reddit, MDN and Stack Overflow; the lower row lists real bookmarks from <code>/download0/bookmarks.txt</code>. Not yet captured on the console.</figcaption>
+      <img src="renders/ui-home.png" alt="PlayKit home screen dark mode: brand above search, eight site tiles with favicons, bookmarks row">
+      <figcaption>Home screen, dark theme. "PlayKit" brand above the search bar, then a row of eight site tiles (DuckDuckGo, Wikipedia, Hacker News, GitHub, YouTube, Reddit, MDN, Stack Overflow). Favicons are fetched live per site with a globe fallback; a bookmarks row sits below. Host render from <code>src/</code>.</figcaption>
     </figure>
     <figure class="render">
-      <img src="renders/shell-keyboard.png" alt="PlayKit controller keyboard over the home screen, with the address field and go button">
-      <figcaption>On-screen keyboard for the address bar. Cross types, Square deletes, Circle cancels, Go navigates. The same keyboard will serve page form fields once WebKit reports them.</figcaption>
+      <img src="renders/ui-home-light.png" alt="PlayKit home screen light mode: same layout on a light background">
+      <figcaption>Same home screen in light mode, toggled from the menu ("Dark / light mode"). All surfaces, text, outlines and the tab strip re-theme.</figcaption>
     </figure>
     <figure class="render">
-      <img src="renders/shell-menu.png" alt="PlayKit menu panel with browser actions">
-      <figcaption>Options menu: navigation, zoom, keyboard, tabs and quit. Actions that need the engine report that WebKit is not linked yet instead of pretending to work.</figcaption>
+      <img src="renders/ui-tabs.png" alt="PlayKit tab strip: group chip, tabs, new tab button, group underline">
+      <figcaption>Firefox-style tab strip above the chrome bar: group chip ("Browsing") with a colored dot, tabs showing favicon + title + close button, "+" new-tab button, and a colored underline under the group's tabs. The crosshair rests on the second tab.</figcaption>
     </figure>
     <figure class="render">
-      <img src="renders/shell-tabs.png" alt="PlayKit tab switcher listing open tabs">
-      <figcaption>Tab switcher. The shell tracks tabs already; PlayKit runs one engine view until WebKit links, so extra tabs report that limit.</figcaption>
+      <img src="renders/ui-menu.png" alt="PlayKit options menu panel">
+      <figcaption>Options menu: navigation, zoom, keyboard, tabs, "Dark / light mode", "Tab group", and quit. The panel re-themes with the active theme.</figcaption>
+    </figure>
+    <figure class="render">
+      <img src="renders/ui-keyboard.png" alt="PlayKit controller keyboard over the home screen">
+      <figcaption>On-screen keyboard for the address bar. Cross types, Square deletes, Circle cancels, Go navigates.</figcaption>
     </figure>
     <figure class="render">
       <img src="renders/shell-page.png" alt="PlayKit page view with the chrome bar above a page area">
@@ -169,7 +178,7 @@
     </figure>
     <ul>
       <li><span class="label"><input type="checkbox" checked disabled> App diagnostic screen<small class="note">Dark slate frame, blue border, centre crosshair, drawn at 1920x1080, tiled into a registered VideoOut buffer and flipped at vblank. Visible on the console after replacing the signed eboot.</small></span><span class="tag ok">done</span></li>
-      <li><span class="label"><input type="checkbox" checked disabled> Browser shell screens<small class="note">Home, keyboard, menu, tabs and page view rendered at 1920x1080 by tests/host/test_browser_ui.c against the PlayKit sources. PPM output converted to PNG for this page.</small></span><span class="tag ok">done</span></li>
+      <li><span class="label"><input type="checkbox" checked disabled> Browser shell screens<small class="note">Home (dark and light), tabs, keyboard, menu and page view rendered at 1920x1080 by tests/host/test_browser_ui.c against the PlayKit sources. PPM output converted to PNG for this page.</small></span><span class="tag ok">done</span></li>
     </ul>
   </section>
 

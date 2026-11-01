@@ -199,6 +199,11 @@ static struct
     browser_ui_action action;
     int action_index;
 
+    /* Virtual cursor driven by the left stick; the touchpad button / cross
+     * clicks at the cursor position. */
+    float cursor_x;
+    float cursor_y;
+
     float time;
 } ui;
 
@@ -1124,6 +1129,10 @@ static void draw_home(ui_canvas *canvas)
 
     ui_fill_rect(canvas, area, 0.0f, theme()->page);
 
+    /* PlayKit brand above the search bar. */
+    text_at(canvas, &ui.medium, 34.0f, cx - text_width(&ui.medium, 34.0f, "PlayKit") * 0.5f,
+            top + 20.0f, theme()->text, "PlayKit");
+
     /* Search sits at the top of the page, under the chrome bar. */
     search = (ui_rect){cx - 500.0f, top + 90.0f, 1000.0f, 78.0f};
     ui_shadow(canvas, search, 22.0f, 22.0f, 10.0f, theme()->shadow);
@@ -1387,6 +1396,12 @@ static void handle_chrome_pad(const ps5_pad_state *pad)
         ui.chrome_focus = (ui.chrome_focus + CHROME_COUNT - 1) % CHROME_COUNT;
     if (pressed(pad, PS5_PAD_RIGHT))
         ui.chrome_focus = (ui.chrome_focus + 1) % CHROME_COUNT;
+    if (pressed(pad, PS5_PAD_UP))
+    {
+        ui.focus = FOCUS_TABS;
+        ui.tab_focus = ui.tab_active;
+        return;
+    }
     if (pressed(pad, PS5_PAD_DOWN) || pressed(pad, PS5_PAD_CIRCLE))
     {
         ui.focus = FOCUS_PAGE;
@@ -1437,6 +1452,38 @@ static void handle_home_pad(const ps5_pad_state *pad)
         ui.chrome_focus = CHROME_ADDRESS;
         return;
     }
+
+    /* Virtual cursor: touchpad/cross clicks what is under it. */
+    if (pressed(pad, PS5_PAD_TOUCH_PAD) || pressed(pad, PS5_PAD_CROSS))
+    {
+        float cx = (float)ui.width * 0.5f;
+        float top = (float)chrome_height();
+        float sx = cx - 500.0f, sy = top + 90.0f;
+        if (ui.cursor_x >= sx && ui.cursor_x < sx + 1000.0f &&
+            ui.cursor_y >= sy && ui.cursor_y < sy + 78.0f)
+        {
+            open_keyboard(true, "");
+            return;
+        }
+        float tile = 150.0f, gap = 28.0f;
+        float grid_width = (float)QUICK_LINK_COUNT * tile +
+                           (float)(QUICK_LINK_COUNT - 1) * gap;
+        float grid_x = cx - grid_width * 0.5f;
+        float grid_y = top + 250.0f;
+        int i;
+        for (i = 0; i < QUICK_LINK_COUNT; i++)
+        {
+            ui_rect box = {grid_x + (float)i * (tile + gap), grid_y, tile, tile};
+            if (ui.cursor_x >= box.x && ui.cursor_x < box.x + box.w &&
+                ui.cursor_y >= box.y && ui.cursor_y < box.y + box.h)
+            {
+                ui.home_focus = i + 1;
+                navigate_to(quick_links[i].url);
+                return;
+            }
+        }
+    }
+
     if (pressed(pad, PS5_PAD_UP) && ui.home_focus > 0)
         ui.home_focus = 0;
     if (pressed(pad, PS5_PAD_DOWN) && ui.home_focus == 0)
@@ -1638,6 +1685,11 @@ static void handle_tabs_pad(const ps5_pad_state *pad)
         ui.focus = FOCUS_PAGE;
         return;
     }
+    if (pressed(pad, PS5_PAD_DOWN))
+    {
+        ui.focus = FOCUS_CHROME;
+        return;
+    }
     move_list_focus(&ui.tab_focus, ui.tab_count, pad);
     if (pressed(pad, PS5_PAD_TRIANGLE))
     {
@@ -1732,14 +1784,15 @@ bool browser_ui_init(int width, int height, const char *font_dir)
             return false;
     }
     build_keys();
-    resolve_state_path(ui.bookmark_path, sizeof(ui.bookmark_path),
-                       "PLAYKIT_BOOKMARKS", UI_STATE_DIR "/bookmarks.txt");
+    resolve_state_path(ui.bookmark_path, sizeof(ui.bookmark_path),"PLAYKIT_BOOKMARKS", UI_STATE_DIR "/bookmarks.txt");
     resolve_state_path(ui.download_dir, sizeof(ui.download_dir),
                        "PLAYKIT_DOWNLOADS", UI_DOWNLOAD_DIR);
     load_bookmarks();
     ui.group_enabled = true;
     copy_string(ui.group_name, sizeof(ui.group_name), "Browsing");
     ui.group_color = 0x4a90e2;
+    ui.cursor_x = ui.width * 0.5f;
+    ui.cursor_y = ui.height * 0.5f;
     for (int i = 0; i < QUICK_LINK_COUNT; i++)
         favicons_prefetch(quick_links[i].url);
     ui.ready = true;
@@ -1808,6 +1861,93 @@ bool browser_ui_handle_pad(const ps5_pad_state *pad, const ps5_pad_state *prev)
     (void)prev;
     if (!ui.ready || pad == NULL || !pad->connected)
         return false;
+
+    /* ------------------------------------------------ virtual cursor */
+    /* Left stick moves the cursor; a small deadzone avoids drift. */
+    {
+        const float deadzone = 0.12f;
+        float dx = pad->left_x / 127.5f - 1.0f;
+        float dy = pad->left_y / 127.5f - 1.0f;
+        if (fabsf(dx) < deadzone) dx = 0.0f;
+        if (fabsf(dy) < deadzone) dy = 0.0f;
+        ui.cursor_x += dx * 900.0f * 0.016f; /* per-frame at ~60fps */
+        ui.cursor_y += dy * 600.0f * 0.016f;
+        if (ui.cursor_x < 0.0f) ui.cursor_x = 0.0f;
+        if (ui.cursor_x > (float)ui.width) ui.cursor_x = (float)ui.width;
+        if (ui.cursor_y < 0.0f) ui.cursor_y = 0.0f;
+        if (ui.cursor_y > (float)ui.height) ui.cursor_y = (float)ui.height;
+    }
+
+    bool clicked = pressed(pad, PS5_PAD_TOUCH_PAD) || pressed(pad, PS5_PAD_CROSS);
+
+    /* Tab strip click: activate a tab, close it, or open a new one.
+     * Only when the shell has focus (not while a menu or keyboard is open). */
+    if (clicked && ui.focus == FOCUS_PAGE)
+    {
+        float strip_h = chrome_height() - 84.0f;
+        if (ui.cursor_y < strip_h)
+        {
+            float x = 14.0f;
+            if (ui.group_enabled)
+            {
+                float lw = text_width(&ui.regular, 17.0f, ui.group_name) + 42.0f;
+                x += lw + 10.0f;
+            }
+            int count = ui.tab_count > 0 ? ui.tab_count : 1;
+            int i;
+            for (i = 0; i < count; i++)
+            {
+                float tw = 210.0f;
+                if (ui.cursor_x >= x && ui.cursor_x < x + tw &&
+                    ui.cursor_y >= 4.0f && ui.cursor_y < strip_h - 8.0f)
+                {
+                    if (ui.cursor_x > x + tw - 30.0f && ui.tab_count > 0)
+                    {
+                        /* close button area of the active tab */
+                        if (i == ui.tab_active || ui.tab_count == 1)
+                        {
+                            /* remove tab */
+                            int j;
+                            for (j = i; j < ui.tab_count - 1; j++)
+                            {
+                                copy_string(ui.tab_titles[j], sizeof(ui.tab_titles[j]),
+                                            ui.tab_titles[j + 1]);
+                            }
+                            ui.tab_count--;
+                            if (ui.tab_active >= ui.tab_count)
+                                ui.tab_active = ui.tab_count > 0 ? ui.tab_count - 1 : 0;
+                            if (ui.tab_count == 0)
+                                browser_ui_show_status("Tab closed");
+                        }
+                    }
+                    else
+                    {
+                        ui.tab_active = i;
+                        browser_ui_show_status(ui.tab_titles[i]);
+                    }
+                    return true;
+                }
+                x += tw + 4.0f;
+            }
+            /* new tab button */
+            float nx = x + 4.0f;
+            if (ui.cursor_x >= nx && ui.cursor_x < nx + 30.0f &&
+                ui.cursor_y >= 8.0f && ui.cursor_y < 34.0f)
+            {
+                /* add a tab */
+                if (ui.tab_count < UI_MAX_TABS)
+                {
+                    int idx = ui.tab_count;
+                    copy_string(ui.tab_titles[idx], sizeof(ui.tab_titles[idx]),
+                                "New Tab");
+                    ui.tab_count++;
+                    ui.tab_active = idx;
+                    browser_ui_show_status("New tab");
+                }
+                return true;
+            }
+        }
+    }
 
     switch (ui.focus)
     {
@@ -1945,4 +2085,14 @@ void browser_ui_render(uint32_t *frame, int width, int height, int stride,
     else if (ui.focus == FOCUS_DOWNLOADS)
         draw_downloads(&canvas);
     draw_status(&canvas);
+
+    /* Crosshair / virtual cursor, always on top. */
+    {
+        float cx = ui.cursor_x, cy = ui.cursor_y;
+        float size = 16.0f;
+        ui_colour c = theme()->primary;
+        ui_fill_rect(&canvas, (ui_rect){cx - 1.0f, cy - size * 0.5f, 2.0f, size}, 0.0f, c);
+        ui_fill_rect(&canvas, (ui_rect){cx - size * 0.5f, cy - 1.0f, size, 2.0f}, 0.0f, c);
+        ui_fill_rect(&canvas, (ui_rect){cx - 3.0f, cy - 3.0f, 6.0f, 6.0f}, 2.0f, c);
+    }
 }

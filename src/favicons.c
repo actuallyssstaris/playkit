@@ -37,6 +37,9 @@ static int slot_count;
 static char cache_directory[256];
 static pthread_t worker;
 static bool worker_started;
+static bool worker_shutdown;
+static pthread_mutex_t worker_lock;
+static pthread_cond_t worker_signal;
 static bool curl_ready;
 
 /* ------------------------------------------------------------------ URL */
@@ -364,25 +367,45 @@ static void *worker_main(void *argument)
     if (buffer.data == NULL)
         return NULL;
 
-    for (i = 0; i < slot_count; i++) {
-        uint32_t *pixels;
-
-        if (slots[i].state != 1)
-            continue;
-        slots[i].state = 2;
-
-        pixels = load_cached(slots[i].host);
-        if (pixels == NULL && fetch_icon(slots[i].host, &buffer)) {
-            pixels = decode_icon(buffer.data, buffer.length);
-            if (pixels != NULL)
-                save_cached(slots[i].host, pixels);
+    /* Stay alive: process queued fetches as they arrive, then wait for more.
+     * prefetch() signals worker_signal whenever a new slot is queued. */
+    for (;;)
+    {
+        pthread_mutex_lock(&worker_lock);
+        while (!worker_shutdown) {
+            int pending = 0;
+            for (i = 0; i < slot_count; i++)
+                if (slots[i].state == 1) { pending = 1; break; }
+            if (pending)
+                break;
+            pthread_cond_wait(&worker_signal, &worker_lock);
         }
+        if (worker_shutdown) {
+            pthread_mutex_unlock(&worker_lock);
+            break;
+        }
+        pthread_mutex_unlock(&worker_lock);
 
-        if (pixels != NULL) {
-            slots[i].pixels = pixels;
-            slots[i].state = 3;
-        } else {
-            slots[i].state = 4;
+        for (i = 0; i < slot_count; i++) {
+            uint32_t *pixels;
+
+            if (slots[i].state != 1)
+                continue;
+            slots[i].state = 2;
+
+            pixels = load_cached(slots[i].host);
+            if (pixels == NULL && fetch_icon(slots[i].host, &buffer)) {
+                pixels = decode_icon(buffer.data, buffer.length);
+                if (pixels != NULL)
+                    save_cached(slots[i].host, pixels);
+            }
+
+            if (pixels != NULL) {
+                slots[i].pixels = pixels;
+                slots[i].state = 3;
+            } else {
+                slots[i].state = 4;
+            }
         }
     }
 
@@ -402,14 +425,23 @@ bool favicons_init(const char *cache_dir)
     snprintf(cache_directory, sizeof(cache_directory), "%s", cache_dir);
     mkdir(cache_directory, 0777);
 
+    pthread_mutex_init(&worker_lock, NULL);
+    pthread_cond_init(&worker_signal, NULL);
+
     if (!curl_ready) {
         curl_ready = curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK;
-        if (!curl_ready)
+        if (!curl_ready) {
+            pthread_cond_destroy(&worker_signal);
+            pthread_mutex_destroy(&worker_lock);
             return false;
+        }
     }
 
-    if (pthread_create(&worker, NULL, worker_main, NULL) != 0)
+    if (pthread_create(&worker, NULL, worker_main, NULL) != 0) {
+        pthread_cond_destroy(&worker_signal);
+        pthread_mutex_destroy(&worker_lock);
         return false;
+    }
     worker_started = true;
     return true;
 }
@@ -437,6 +469,10 @@ void favicons_prefetch(const char *url)
     snprintf(slots[slot_count].host, sizeof(slots[slot_count].host), "%s", host);
     slots[slot_count].state = 1;
     slot_count++;
+
+    pthread_mutex_lock(&worker_lock);
+    pthread_cond_signal(&worker_signal);
+    pthread_mutex_unlock(&worker_lock);
 }
 
 const uint32_t *favicons_get(const char *url)
@@ -458,8 +494,14 @@ const uint32_t *favicons_get(const char *url)
 void favicons_shutdown(void)
 {
     if (worker_started) {
+        pthread_mutex_lock(&worker_lock);
+        worker_shutdown = true;
+        pthread_cond_signal(&worker_signal);
+        pthread_mutex_unlock(&worker_lock);
         pthread_join(worker, NULL);
         worker_started = false;
+        pthread_cond_destroy(&worker_signal);
+        pthread_mutex_destroy(&worker_lock);
     }
     if (curl_ready) {
         curl_global_cleanup();
