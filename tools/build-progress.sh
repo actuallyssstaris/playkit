@@ -35,12 +35,26 @@ except OSError:
     lines = []
 
 progress = re.compile(r"^\[(\d+)/(\d+)\] ?(.*)$")
+marker = re.compile(r"^==> \[([a-z0-9]+)\] ?(.*)$")
 for line in lines:
     match = progress.match(line)
     if match:
         current, total = int(match.group(1)), int(match.group(2))
         step = match.group(3).strip()
         phase = "Compile"
+        continue
+    match = marker.match(line)
+    if match:
+        phase = match.group(1)
+        step = match.group(2).strip() or step
+
+# A build spends a while in ICU and in CMake before ninja prints anything, so
+# report the last thing the log said rather than an empty step.
+if not step:
+    for line in reversed(lines):
+        if line.strip():
+            step = line.strip()
+            break
 
 # ninja stops after printing FAILED, so a failure wins over the step count.
 if any(line.startswith("FAILED:") for line in lines):

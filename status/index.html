@@ -264,6 +264,8 @@
         label.textContent = 'Build complete';
       } else if (state.status === 'waiting') {
         label.textContent = 'Waiting for the build to start';
+      } else if (!state.total) {
+        label.textContent = (state.phase || 'Starting') + '…';
       } else {
         label.textContent = percent + '% · ' + state.current + '/' +
                             state.total + ' steps';
