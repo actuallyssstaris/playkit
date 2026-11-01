@@ -15,9 +15,10 @@ history. Engine code stays separate from PS5 platform code. The graphics backend
 must stay modular: the current presenter is a CPU tiler into VideoOut; an
 OpenGL 4.6 backend via EGL (`ps5-opengl`) is the intended fast path later.
 
-The project is **not a git repository**. There is no undo. Read a file before
-replacing it. Preserve existing work in `third_party/`, `platform/`, and the
-WebKit PlayStation-specific sources.
+The project **is a git repository** at `github.com/actuallyssstaris/playkit`
+(public). Push after each coherent change. GitHub Actions builds every push and
+on `workflow_dispatch` (`.github/workflows/build.yml`); the signed app folder is
+produced at `dist/PPSA90002/`. There is local undo via git.
 
 The status page must stay current, must show real results only (no invented
 success), and must be served on port 80 with a working progress bar and renders.
@@ -55,13 +56,15 @@ success), and must be served on port 80 with a working progress bar and renders.
   `runtime/libc.prx`, `ps5-native-tool`, docs).
 - Homebrew starter reference: `/tmp/opencode/ps5-homebrew-starter/kit`.
 - PS5 agent MCP: `/root/projects/he` with venv `/root/projects/he/.venv`.
-  Config: `/root/.config/opencode/opencode.jsonc`, `PS5_HOST=184.145.228.235`.
+  Config: `/root/.config/opencode/opencode.jsonc`, `PS5_HOST=192.168.2.15`.
 - Console: firmware `12020000` (12.02), jailbroken.
+  - LAN IP (preferred when home): `192.168.2.15`
   - Public IP: `184.145.228.235`
-  - LAN IP (when home): `192.168.2.15`
   - FTP: port `2121`, user `anonymous`, password `codex`
   - Remote Play: port `9295`
   - ps5debug / elfldr: port `9021`
+- GitHub repo: `github.com/actuallyssstaris/playkit` (public). Actions builds
+  on push and workflow_dispatch; no secrets needed for the build workflow.
 - Title identity: `PPSA90002`, concept id `90002`, content id
   `UP9000-PPSA90002_00-PLAYKIT000000000`.
 - Installed app folder on console: `/data/homebrew/PPSA90002/`
@@ -71,7 +74,8 @@ success), and must be served on port 80 with a working progress bar and renders.
 
 ## 4. Current state (what actually works)
 
-- A valid **signed FSELF** builds and launches on the console.
+- A valid **signed FSELF** builds (locally and on GitHub Actions) and launches
+  on the console.
 - The title initialises heap, VideoOut, pad, state directory, and the diagnostic
   renderer, then enters the run loop.
 - The console shows the **diagnostic frame**: dark slate background, blue border,
@@ -81,57 +85,65 @@ success), and must be served on port 80 with a working progress bar and renders.
 ```
 start
 heap: 384 MiB mapped, 0 KiB live, 0 KiB peak, 0 failed
-video: built without EGL; using software blit
+video: 33554432 byte buffers registered, 0 byte direct pool
 video ok
-pad: user 518282432
-pad: opened handle 55707392 on attempt 1
+pad: user 518282431
+pad: opened handle 56624896 on attempt 1
 input ok
 state ok
 webkit: initialized (diagnostic renderer)
 webkit ok
+shell: fonts from /app0/assets/fonts
+shell ok
 entering run loop
 ```
 
-  Note: the "software blit" line is from the older build. The current build logs
-  `video: ... byte buffers registered ...` after the VideoOut rewrite.
+- Current signed artifact on the build machine:
+  - `dist/PPSA90002/eboot.bin`, **7,379,132 bytes**
+  - SHA-256 `fad6a185a29e63d181ea184ba5415142a9cc3abcb1aae9f0a5f706847ee7a8de`
+  - deployed to the console at `192.168.2.15` via `make deploy PS5_HOST=192.168.2.15`
+
 - The **PlaySurf browser shell** is integrated (`src/ui.c`, `src/browser_ui.c`).
   Home screen follows the Firefox new-tab layout: search on top, one row of
-  site tiles with labels, bookmarks row below, controller hint row. The
-  controller keyboard, menu, tabs, bookmarks and downloads panels all render
-  and are host-tested. It uses the same pad ABI and RGBA frame; no OpenGL.
-  Fonts are baked Google Sans and DejaVu `.huifont` atlases in `assets/fonts`.
-  Rendering is verified on the host (`tests` harness copied from PlaySurf),
-  not yet on the console.
-- Current signed artifact on the build machine:
-  - `dist/PPSA90002/eboot.bin`, **63,305 bytes**
-  - SHA-256 `34eff555415f9d2ac65be25b7e94dd0788d1b313646dd0fca0c09fb606b8dceb`
-  - signed, plaintext, 12 segments, integrity valid, authority
-    `0x3100000000000002`
-  - convenient copies: `/root/projects/PlayKit/PLAYKIT-SIGNED-EBOOT.bin`
-    and `/root/projects/PlayKit/status/PLAYKIT-SIGNED-EBOOT.bin`
+  site tiles with labels, bookmarks row below. The controller keyboard, menu,
+  tabs, bookmarks and downloads panels all render and are host-tested. It uses
+  the same pad ABI and RGBA frame; no OpenGL. Fonts are baked Google Sans and
+  DejaVu `.huifont` atlases in `assets/fonts`. Rendering is verified on the host
+  (`tests` harness copied from PlaySurf).
+
+- **New shell features (all verified on the host test):**
+  - **Tab strip** above the chrome bar: group chip ("Browsing") with colored
+    dot, tabs with favicon + title + close button, "+" new-tab button, colored
+    underline under the group's tabs. Tab groups toggle via the menu.
+    D-pad UP from chrome enters tabs; DOWN returns to chrome.
+  - **Dark / light theme**: `ui_light` and `ui_dark` in `src/ui.c`; menu item
+    "Dark / light mode" toggles. Chrome, home, menu, panels and tab strip all
+    re-theme.
+  - **Favicon fetcher** (`src/favicons.c` / `.h`): async libcurl worker fetches
+    `/favicon.ico` per site (https then http), decodes ICO/PNG/DIB, scales to
+    64x64, caches RGBA under `/download0/favicons`. Worker stays alive on a
+    condition variable so prefetches queued after init are served. Home tiles
+    draw the fetched icon with a globe fallback.
+  - **Virtual cursor / crosshair**: left stick moves the crosshair; the touchpad
+    button or Cross clicks at the cursor position. Works on home tiles, search
+    bar, tab strip and chrome buttons. Always drawn on top.
+  - **PlayKit brand** appears above the search bar on the home screen.
 
 ## 5. What is running right now
 
-A JavaScriptCore static-library build is running in the background:
+Nothing is running on the dev box. The previous JSC background build was
+superseded by GitHub Actions builds.
 
-- Directory: `/root/projects/PlayKit/build/jsc`
-- Command: `ninja -j1`
-- Log: `/tmp/opencode/jsc-build22.log`
-- Progress: 112/963 objects were built, then the build stopped on
-  `JSCBytecodeCacheVersion.cpp`: `unknown type name 'ElfW'`. Root cause: the
-  JSCOnly CMake port did not define `WTF_PLATFORM_PLAYSTATION`, so the
-  Unix-only branch using `dl_iterate_phdr` and `ElfW` was compiled. The console
-  libc declares `dl_iterate_phdr` but exports neither it nor `ElfW`.
-- Fix applied: `platform/ps5_compat.h` now defines
-  `WTF_PLATFORM_PLAYSTATION=1`, selecting the PlayStation branch (precomputed
-  cache version). The build was restarted and is recompiling from the start
-  because the forced-include header changed.
-- `-j1` is deliberate: the machine has 7 GB RAM and WebKit C++ translation
-  units are large. Earlier runs died with no compiler error (host/session kill).
-- Warnings about `GigacageConfig.h` (`extern "C" Slot g_config[]`) are benign.
-
-Do not kill this build without reason. If it dies, rerun `ninja -j1` in
-`build/jsc`; ninja resumes.
+- GitHub Actions build: `.github/workflows/build.yml` runs `make app` on push
+  and `workflow_dispatch`. Last build: **success** (signed eboot 7,379,132 bytes,
+  `dist/PPSA90002/`). Artifact uploaded for 14 days.
+- JSC static-library build is **paused**. If you want to resume it:
+  `cd build/jsc && ninja -j1`, log at `/tmp/opencode/jsc-build23.log`.
+  Previous stop was a `memmem` conflict between WTF's own definition and the
+  PS5 SDK's `string.h`; fixed by not defining `HAVE_MEMMEM` on PlayStation in
+  `third_party/webkit/Source/WTF/wtf/PlatformHave.h`. The build may hit further
+  errors; resume with `ninja -j1` (it resumes from where it stopped).
+  `-j1` is deliberate: 7 GB RAM.
 
 ## 6. Repo layout and ownership
 
@@ -147,6 +159,9 @@ src/webkit_glue.c       diagnostic painter; later real WebKit paint bridge
 src/webkit_glue.h       browser API surface used by main
 Makefile                `make app`, `make deploy`, `make undeploy`
 tools/build.sh          compile, link, convert, sign, assemble dist folder
+tools/deploy.sh         atomic FTP deploy/undeploy to the console
+.github/workflows/build.yml   GitHub Actions: build + sign on push/dispatch
+README.md               project overview and build instructions
 tools/deploy.sh         atomic FTP deploy/undeploy
 tools/prospero-clang18  compiler wrapper
 tooling/native/         app_crt.cpp, app_cpp_runtime.cpp, app-symbols.map,

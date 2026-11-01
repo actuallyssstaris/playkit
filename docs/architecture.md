@@ -1,17 +1,26 @@
 # PlayKit Architecture Assessment
 
-## Current state (payload-based)
+## Current state (native title)
 
-PlayKit is a WebKit 2.48.0 port configured as a **PS5 payload**, not a native title.
+PlayKit is a WebKit 2.48.0 port configured as a **PS5 native title** (standalone
+eboot, not a payload).
 - Toolchain: `clang-18` targeting `x86_64-sie-ps5`, linker `prospero-lld`, SDK `PS5_PAYLOAD_SDK`
-- Build: CMake (`ps5-toolchain.cmake`), cross-compiling JSC, WTF, bmalloc, libpas
-- JSC build: ~41/968 objects compiled; `libJavaScriptCore.a` not yet produced
-- Dependencies built: Cairo 1.16.0, Pixman 0.42.2, ICU 76.1, libwpe 1.16.2 (all static, under `build/ps5`)
-- Platform shims: `platform/ps5_compat.{h,c}` (pthread_cond_clockwait, timespec_get, pthread_setname_np, clock_gettime_np)
-- WebKit has extensive PlayStation-specific code: WTF/playstation, JSC/shell/playstation, WebCore/platform/playstation, etc.
-- Graphics plan: software rendering via `WKPagePaint` → Cairo image surface → VideoOut (no EGL/GLES in public SDK)
-- Process model: payload-style `rfork_thread` + `ptrace` + `execve` for WebProcess/NetworkProcess
-- Console: online at 192.168.2.15 (ports 9295, 9021 open); Remote Play works
+- Build: Makefile + `tools/build.sh`, compiles C sources, links with `prospero-lld`,
+  converts via `ps5-native-tool`, signs as FSELF, packages `dist/PPSA90002/`
+- JSC build: paused (memmem conflict with PS5 SDK string.h, fixed; may hit
+  further errors). `libJavaScriptCore.a` not yet produced.
+- Dependencies built: Cairo 1.16.0, Pixman 0.42.2, ICU 76.1, libwpe 1.16.2
+  (all static, under `build/ps5`)
+- Platform shims: `platform/ps5_compat.{h,c}` (pthread_cond_clockwait,
+  timespec_get, pthread_setname_np, clock_gettime_np)
+- WebKit has extensive PlayStation-specific code: WTF/playstation,
+  JSC/shell/playstation, WebCore/platform/playstation, etc.
+- Graphics plan: software rendering via diagnostic painter → VideoOut (no EGL/GLES
+  yet; ps5-opengl is the intended fast path)
+- Process model: single-process native title; WebKit2 multiprocess deferred
+- Console: online at `192.168.2.15` (ports 9295, 9021 open); Remote Play works
+- GitHub repo: `github.com/actuallyssstaris/playkit` (public). Actions builds
+  on push and workflow_dispatch.
 
 ## SDK research (thoroughly read)
 
@@ -344,18 +353,43 @@ New artifact: 18,153-byte signed FSELF, SHA-256
 
 `HANDOVER.md` in the repository root records the current state, every diagnosed launch failure, the exact build and deploy commands, and the next steps. Read it before continuing.
 
-## Browser shell and JSC platform selection (2026-10-31)
+## Browser shell (2026-11-01)
 
 The browser chrome comes from PlaySurf (`src/ui.c`, `src/browser_ui.c`,
-GPL-3.0-or-later, BlackBearReloaded) rather than the Vulkan UI kit. It paints
-into the same linear RGBA frame as the diagnostic renderer, so it needs no GL
-context and no new ABI: the pad struct and button bits are identical. The home
-screen follows the Firefox new-tab layout: search field on top, one row of
-site tiles with labels, a bookmarks row below, and the controller hint row.
-Fonts are the baked `.huifont` SDF atlases, packaged under `assets/fonts` and
-read from `/app0/assets/fonts` on the console.
+GPL-3.0-or-later, BlackBearReloaded). It paints into the same linear RGBA frame
+as the diagnostic renderer, so it needs no GL context and no new ABI: the pad
+struct and button bits are identical.
 
-The JavaScriptCore JSCOnly build stopped at `JSCBytecodeCacheVersion.cpp`:
+**Home screen** follows the Firefox new-tab layout: search field on top, one
+row of site tiles with labels, a bookmarks row below. "PlayKit" brand appears
+above the search bar.
+
+**Tab strip** (new): Firefox-style strip above the chrome bar. Group chip
+("Browsing") with a colored dot, tabs showing favicon + title + close button,
+"+" new-tab button, and a colored underline under the group's tabs. Tab groups
+toggle via the menu ("Tab group"). D-pad UP from chrome enters tabs; DOWN
+returns. The virtual cursor can click tabs, close, or new tab.
+
+**Dark / light theme** (new): `ui_light` and `ui_dark` themes in `src/ui.c`;
+menu item "Dark / light mode" toggles. Chrome, home, menu, panels, tab strip
+and status pill all re-theme.
+
+**Favicon fetcher** (new, `src/favicons.c` / `.h`): async libcurl worker fetches
+`/favicon.ico` per site (https then http, 10s timeout), decodes ICO/PNG/DIB,
+scales to 64x64, caches RGBA under `/download0/favicons`. The worker stays alive
+on a condition variable so prefetches queued after `browser_ui_init` are served.
+Home tiles draw the fetched icon with a globe fallback.
+
+**Virtual cursor / crosshair** (new): left stick moves the crosshair over the
+UI; the touchpad button or Cross clicks at the cursor position. Works on home
+tiles, search bar, tab strip and chrome buttons. Always drawn on top.
+
+Fonts are the baked `.huifont` SDF atlases, packaged under `assets/fonts` and
+read from `/app0/assets/fonts` on the console. Host test renders every screen
+(`tests` harness copied from PlaySurf); console rendering verified via the
+deployed signed eboot.
+
+**JavaScriptCore** JSCOnly build stopped at `JSCBytecodeCacheVersion.cpp`:
 
 ```
 error: unknown type name 'ElfW'
@@ -369,3 +403,11 @@ GNU build-id through `dl_iterate_phdr` and `ElfW`. The console libc declares
 the PlayStation branch: a cache version hashed from `__TIMESTAMP__`. Because
 that header is force-included in every translation unit, the whole build
 recompiles once after the change.
+
+A second JSC blocker: WTF defines its own `memmem` but the PS5 SDK's
+`string.h` already declares one (differ only in return type → compiler error).
+Fixed by not defining `HAVE_MEMMEM` on PlayStation in
+`third_party/webkit/Source/WTF/wtf/PlatformHave.h`.
+
+Resume with: `cd build/jsc && ninja -j1` (log at
+`/tmp/opencode/jsc-build23.log`). `-j1` is deliberate: 7 GB RAM.
