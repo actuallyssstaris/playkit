@@ -1,1 +1,1 @@
-{"source": "jsc", "phase": "Compile", "status": "running", "current": 1360, "total": 2426, "percent": 56, "step": "Generating ../../JavaScriptCore/DerivedSources/IntlCollatorConstructor.lut.h", "updated": "2026-11-01T21:01:26+00:00"}
+{"source": "jsc", "phase": "Compile", "status": "running", "current": 1382, "total": 2426, "percent": 57, "step": "Generating ../../JavaScriptCore/DerivedSources/JSDataViewPrototype.lut.h", "updated": "2026-11-01T21:01:57+00:00"}
