@@ -1,1 +1,1 @@
-{"source": "jsc", "phase": "Compile", "status": "running", "current": 1568, "total": 2426, "percent": 65, "step": "Building CXX object Source/JavaScriptCore/CMakeFiles/JavaScriptCore.dir/__/__/JavaScriptCore/DerivedSources/unified-sour", "updated": "2026-11-01T21:03:00+00:00"}
+{"source": "jsc", "phase": "jsc", "status": "done", "current": 2426, "total": 2426, "percent": 100, "step": "done: /home/runner/work/playkit/playkit/build/jsc/lib/libJavaScriptCore.a", "updated": "2026-11-01T21:03:15+00:00"}
