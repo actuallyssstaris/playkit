@@ -1,0 +1,94 @@
+name: JavaScriptCore
+
+# The JSCOnly build needs an x86-64 host: WebKit compiles its LLInt offset
+# extractors for the target and reads them back, and this is far too slow to
+# run on the 7 GB development box. Run it here and take the static libraries
+# from the artifacts.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tools/build-jsc.sh"
+      - "tools/fetch-sources.sh"
+      - "tools/patches/**"
+      - "cmake/ps5-toolchain.cmake"
+      - "platform/**"
+      - ".github/workflows/jsc.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jsc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build JavaScriptCore
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+
+    env:
+      PS5_PAYLOAD_SDK: /opt/ps5-payload-sdk
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang-18 lld-18 ninja-build cmake ruby python3 curl xz-utils ccache
+
+      - name: Install PS5 payload SDK
+        run: |
+          curl -fsSL -o /tmp/ps5-payload-sdk.zip \
+            https://github.com/ps5-payload-dev/sdk/releases/latest/download/ps5-payload-sdk.zip
+          sudo unzip -q -d /opt /tmp/ps5-payload-sdk.zip
+          ls "$PS5_PAYLOAD_SDK/bin/prospero-lld"
+
+      # WebKit and ICU are untracked; this restores them at the pinned
+      # versions and applies tools/patches/webkit-2.48-playstation.patch.
+      - name: Fetch WebKit and ICU
+        run: bash tools/fetch-sources.sh
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: jsc-ccache-${{ github.sha }}
+          restore-keys: |
+            jsc-ccache-
+
+      - name: Cache ICU for the console
+        uses: actions/cache@v4
+        with:
+          path: build/icu-ps5/install
+          key: icu-ps5-76.1-${{ hashFiles('tools/build-jsc.sh') }}
+
+      - name: Build JavaScriptCore
+        run: |
+          ccache --max-size=2G
+          bash tools/build-jsc.sh
+
+      - name: Show results
+        run: |
+          ls -la build/jsc/lib/libJavaScriptCore.a build/jsc/lib/libWTF.a
+          ls -la build/icu-ps5/install/lib/libicuuc.a
+
+      - name: Upload libraries
+        uses: actions/upload-artifact@v4
+        with:
+          name: jsc-ps5
+          path: |
+            build/jsc/lib/libJavaScriptCore.a
+            build/jsc/lib/libWTF.a
+            build/jsc/lib/libbmalloc.a
+            build/jsc/JavaScriptCore/DerivedSources/LLIntDesiredOffsets.h
+            build/jsc/JavaScriptCore/DerivedSources/LLIntAssembly.h
+          if-no-files-found: error
+          retention-days: 14

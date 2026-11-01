@@ -1,0 +1,116 @@
+diff --git a/Source/JavaScriptCore/CMakeLists.txt b/Source/JavaScriptCore/CMakeLists.txt
+index b52d88928..7696b071c 100644
+--- a/Source/JavaScriptCore/CMakeLists.txt
++++ b/Source/JavaScriptCore/CMakeLists.txt
+@@ -407,6 +407,14 @@ set(LLIntSettingsExtractor_FRAMEWORKS ${JavaScriptCore_FRAMEWORKS})
+ set(LLIntSettingsExtractor_DEPENDENCIES JavaScriptCore_CopyHeaders)
+ WEBKIT_EXECUTABLE(LLIntSettingsExtractor)
+ 
++# This tool is never executed: generate_offset_extractor.rb only scans its
++# bytes for the settings table. A PlayStation executable has no _start, so
++# --gc-sections would drop that table as unreachable. Keep the tool's main
++# alive to keep the table in the file.
++if (CMAKE_SYSTEM_NAME STREQUAL "PlayStation")
++    target_link_options(LLIntSettingsExtractor PRIVATE "-Wl,-u,main")
++endif ()
++
+ # LLIntSettingsExtractor target needs to have a direct or indirect
+ # dependency to Bytecodes target for CMake Visual Studio generator to
+ # eliminate duplicated custom commands. Otherwise, Bytecodes.h will be
+@@ -426,6 +434,12 @@ set(LLIntOffsetsExtractor_FRAMEWORKS ${JavaScriptCore_FRAMEWORKS})
+ set(LLIntOffsetsExtractor_DEPENDENCIES JavaScriptCore_CopyHeaders JSCBuiltins)
+ WEBKIT_EXECUTABLE(LLIntOffsetsExtractor)
+ 
++# Same reason as LLIntSettingsExtractor above: asm.rb only scans this binary
++# for magic values, and --gc-sections would drop them for lack of _start.
++if (CMAKE_SYSTEM_NAME STREQUAL "PlayStation")
++    target_link_options(LLIntOffsetsExtractor PRIVATE "-Wl,-u,main")
++endif ()
++
+ # The build system will execute asm.rb every time LLIntOffsetsExtractor's mtime is newer than
+ # LLIntAssembly.h's mtime. The problem we have here is: asm.rb has some built-in optimization
+ # that generates a checksum of the LLIntOffsetsExtractor binary, if the checksum of the new
+diff --git a/Source/WTF/wtf/PlatformHave.h b/Source/WTF/wtf/PlatformHave.h
+index 81509681f..dc23e7e93 100644
+--- a/Source/WTF/wtf/PlatformHave.h
++++ b/Source/WTF/wtf/PlatformHave.h
+@@ -127,10 +127,6 @@
+ #endif
+ #endif
+ 
+-#if !defined(HAVE_MISSING_U8STRING) && PLATFORM(PLAYSTATION)
+-#define HAVE_MISSING_U8STRING 1
+-#endif
+-
+ /* FIXME: Remove after CMake build enabled on Darwin */
+ #if OS(DARWIN) && !defined(BUILDING_WITH_CMAKE)
+ #define HAVE_ERRNO_H 1
+@@ -406,7 +402,9 @@
+ #define HAVE_STACK_BOUNDS_FOR_NEW_THREAD 1
+ #endif
+ 
+-#if !OS(WINDOWS) && !PLATFORM(PLAYSTATION)
++/* The PS5 SDK declares memmem in string.h, so WTF must not define its own
++ * overload: the two differ only in return type. */
++#if !OS(WINDOWS)
+ #define HAVE_MEMMEM 1
+ #endif
+ 
+diff --git a/Source/bmalloc/bmalloc/AvailableMemory.cpp b/Source/bmalloc/bmalloc/AvailableMemory.cpp
+index c89de5687..72a5f6850 100644
+--- a/Source/bmalloc/bmalloc/AvailableMemory.cpp
++++ b/Source/bmalloc/bmalloc/AvailableMemory.cpp
+@@ -44,7 +44,7 @@
+ #import <mach/mach_error.h>
+ #import <math.h>
+ #elif BOS(UNIX)
+-#if BOS(FREEBSD) || BOS(LINUX)
++#if (BOS(FREEBSD) || BOS(LINUX)) && !BPLATFORM(PLAYSTATION)
+ #include <sys/sysinfo.h>
+ #endif
+ #if BOS(LINUX)
+@@ -161,7 +161,7 @@ static size_t computeAvailableMemory()
+     // Round up the memory size to a multiple of 128MB because max_mem may not be exactly 512MB
+     // (for example) and we have code that depends on those boundaries.
+     return ((sizeAccordingToKernel + multiple - 1) / multiple) * multiple;
+-#elif BOS(FREEBSD) || BOS(LINUX)
++#elif (BOS(FREEBSD) || BOS(LINUX)) && !BPLATFORM(PLAYSTATION)
+     struct sysinfo info;
+     if (!sysinfo(&info))
+         return info.totalram * info.mem_unit;
+diff --git a/Source/bmalloc/libpas/src/libpas/pas_thread_local_cache.c b/Source/bmalloc/libpas/src/libpas/pas_thread_local_cache.c
+index 494c1bb50..582cb3b41 100644
+--- a/Source/bmalloc/libpas/src/libpas/pas_thread_local_cache.c
++++ b/Source/bmalloc/libpas/src/libpas/pas_thread_local_cache.c
+@@ -49,6 +49,9 @@
+ #endif
+ #if PAS_PLATFORM(PLAYSTATION)
+ #include <pthread_np.h>
++/* The public SDK exports pthread_getname_np but only declares
++ * pthread_get_name_np. */
++int pthread_getname_np(pthread_t, char *, size_t);
+ #endif
+ 
+ PAS_BEGIN_EXTERN_C;
+@@ -213,7 +216,7 @@ static void dump_thread_diagnostics(pthread_t thread)
+         pas_log("[%d] thread %p does not have id\n", getpid(), thread);
+ #endif
+ #if PAS_PLATFORM(PLAYSTATION)
+-    getname_result = pthread_get_name_np(thread, thread_name);
++    getname_result = pthread_getname_np(thread, thread_name, sizeof(thread_name));
+ #else
+     getname_result = pthread_getname_np(thread, thread_name, sizeof(thread_name));
+ #endif
+diff --git a/Source/cmake/WebKitCommon.cmake b/Source/cmake/WebKitCommon.cmake
+index 38ac0c471..64480dfdc 100644
+--- a/Source/cmake/WebKitCommon.cmake
++++ b/Source/cmake/WebKitCommon.cmake
+@@ -148,6 +148,8 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
+         set(WTF_OS_WINDOWS 1)
+     elseif (CMAKE_SYSTEM_NAME MATCHES "Fuchsia")
+         set(WTF_OS_FUCHSIA 1)
++    elseif (CMAKE_SYSTEM_NAME MATCHES "PlayStation")
++        set(WTF_OS_UNIX 1)
+     else ()
+         message(FATAL_ERROR "Unknown OS '${CMAKE_SYSTEM_NAME}'")
+     endif ()
