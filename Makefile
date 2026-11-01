@@ -58,7 +58,12 @@ test: test-unit test-integration
 
 test-unit:
 	@printf '%s\n' '==> [test-unit] Running host-native unit tests'
-	@printf '%s\n' 'no unit tests yet'
+	@mkdir -p build/hosttest
+	@$(HOST_CC) -std=c11 -O1 -g -Wall -Wextra -Isrc -o build/hosttest/ui_test \
+		tests/host/test_ui.c tests/host/stubs.c src/ui.c src/browser_ui.c -lm
+	@PLAYKIT_BOOKMARKS=/tmp/opencode/playkit-test-bookmarks.txt \
+		PLAYKIT_DOWNLOADS=/tmp/opencode/playkit-test-downloads \
+		./build/hosttest/ui_test
 
 test-integration:
 	@printf '%s\n' '==> [test-integration] Running host tooling integration tests'

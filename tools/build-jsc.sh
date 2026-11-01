@@ -25,8 +25,10 @@ if [[ ! -d $SDK ]]; then
     exit 1
 fi
 
-# The SCE clang finds prospero-lld through PATH.
+# The SCE clang finds prospero-lld through PATH, and the CMake toolchain reads
+# the SDK path from the environment.
 export PATH="$SDK/bin:$PATH"
+export PS5_PAYLOAD_SDK=$SDK
 
 icu() {
     if [[ -f $ICU_PS5_PREFIX/lib/libicuuc.a && -f $ICU_PS5_PREFIX/lib/libicui18n.a && -f $ICU_PS5_PREFIX/lib/libicudata.a ]]; then
