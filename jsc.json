@@ -1,1 +1,1 @@
-{"source": "jsc", "phase": "jsc", "status": "running", "current": 0, "total": 0, "percent": 0, "step": "configuring JSCOnly", "updated": "2026-11-01T20:59:52+00:00"}
+{"source": "jsc", "phase": "Compile", "status": "running", "current": 1314, "total": 2426, "percent": 54, "step": "Generating ../../JavaScriptCore/PrivateHeaders/JavaScriptCore/Bytecodes.h", "updated": "2026-11-01T21:00:23+00:00"}
