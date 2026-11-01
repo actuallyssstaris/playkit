@@ -33,6 +33,11 @@ set(CMAKE_MODULE_LINKER_FLAGS_INIT "${PS5_LINK_FLAGS}")
 # probes are enough for configuration; real targets are linked by the app.
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 set(CMAKE_FIND_ROOT_PATH "${PS5_PAYLOAD_SDK}")
+# Prebuilt console dependencies (ICU and later Cairo etc.) live outside the
+# SDK, and the ONLY modes above would hide them from find_path/find_library.
+if(ICU_ROOT)
+    list(APPEND CMAKE_FIND_ROOT_PATH "${ICU_ROOT}")
+endif()
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
