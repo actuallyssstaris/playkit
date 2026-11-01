@@ -203,6 +203,7 @@ static struct
     float page_x;
     float page_y;
     bool page_pointer; /* the stick currently drives the page cursor */
+    bool page_seen;    /* the page cursor has a position on this page */
 
     /* A page click produced by the page cursor, in frame coordinates. */
     bool page_click;
@@ -459,6 +460,7 @@ static void navigate_to(const char *url)
     ui.action = BROWSER_UI_NAVIGATE;
     ui.screen = SCREEN_PAGE;
     ui.focus = FOCUS_PAGE;
+    ui.page_seen = false;
     start_loading(url);
     browser_ui_show_status(url);
 }
@@ -2028,13 +2030,20 @@ bool browser_ui_handle_pad(const ps5_pad_state *pad, const ps5_pad_state *prev)
             clamp_crosshair();
 
             /* Continued push against the bottom of the chrome hands the stick
-             * to the page cursor. */
+             * to the page cursor. It keeps its place on the page: handing the
+             * stick over is not the same as moving the pointer. */
             if (split && dy > 0.0f && at_bottom)
             {
                 ui.page_pointer = true;
-                ui.page_x = clampf(ui.cursor_x, POINTER_MARGIN,
-                                   (float)ui.width - POINTER_MARGIN);
-                ui.page_y = content_area().y + POINTER_MARGIN;
+                if (ui.page_seen)
+                    clamp_page_pointer();
+                else
+                {
+                    ui.page_x = clampf(ui.cursor_x, POINTER_MARGIN,
+                                       (float)ui.width - POINTER_MARGIN);
+                    ui.page_y = content_area().y + POINTER_MARGIN;
+                    ui.page_seen = true;
+                }
             }
         }
     }

@@ -125,10 +125,20 @@ int main(void)
     pad_step(0.0f, 0.0f, PS5_PAD_CROSS);
     CHECK(!browser_ui_take_click(&click_x, &click_y));
 
-    /* Back to the bottom edge: the next downward push hands over again, then
-     * an upward push returns the crosshair to the chrome. */
+    /* Back to the bottom edge: the next downward push hands over again. The
+     * page cursor keeps its place, so a crosshair moved sideways in the chrome
+     * does not drag the page pointer with it. */
+    move(-1.0f, 0.0f, 5);
     push(0.0f, 1.0f);
     CHECK(browser_ui_pointer_visible());
+    pad_step(0.0f, 0.0f, PS5_PAD_CROSS);
+    CHECK(browser_ui_take_click(&click_x, &click_y));
+    CHECK(click_x >= 346 && click_x <= 348);
+    CHECK(click_y >= BROWSER_UI_CHROME_HEIGHT);
+    CHECK(click_y <= BROWSER_UI_CHROME_HEIGHT + 20);
+
+    /* An upward push returns the crosshair to the chrome, at the page
+     * cursor's x again. */
     push(0.0f, -1.0f);
     CHECK(!browser_ui_pointer_visible());
 

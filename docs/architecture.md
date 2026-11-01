@@ -397,7 +397,10 @@ Clicks are routed by pointer: the page cursor produces
 `browser_ui_take_click()` coordinates that `main.c` forwards to
 `webkit_mouse_click()`, and the crosshair activates the chrome control under it
 (back, forward, reload, address, menu, tab strip). The page cursor can therefore
-never reach a shell control, and the crosshair can never click the page.
+never reach a shell control, and the crosshair can never click the page. The
+page cursor keeps its position across handovers, so moving the crosshair in the
+chrome does not drag the pointer on the page; a new navigation resets it to the
+top of the page.
 
 **JavaScriptCore** JSCOnly build stopped at `JSCBytecodeCacheVersion.cpp`:
 
