@@ -20,8 +20,11 @@
 /* Title identity, matching sce_sys/param.json. */
 #define PS5_TITLE_ID "PPSA90002"
 
-/* Folder the title is installed into on a dev console. It is writable, so the
- * app keeps its log, favicons, downloads and state there when it exists. */
+/* The title's own folder as the app sees it: this is the game folder
+ * /data/homebrew/<title id> on a dev console. */
+#define PS5_APP_DIR "/app0"
+
+/* Folder the title is installed into on a dev console, as seen over FTP. */
 #define PS5_GAME_DIR "/data/homebrew/" PS5_TITLE_ID
 
 /* Writable area a retail-style install gets instead. */
