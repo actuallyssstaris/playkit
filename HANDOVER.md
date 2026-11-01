@@ -1,6 +1,6 @@
 # PlayKit handover
 
-Last updated: 2026-10-31 20:10 UTC, by the current agent. Read this file fully before
+Last updated: 2026-11-01 16:30 UTC, by the current agent. Read this file fully before
 touching anything. It contains the current state, the exact commands, and every
 failure already diagnosed so you do not repeat them.
 
@@ -47,7 +47,9 @@ success), and must be served on port 80 with a working progress bar and renders.
 
 ## 3. Environment
 
-- Dev box: Linux, 7 GB RAM, about 13 GB free disk, no git repo.
+- Dev box: Linux, 7 GB RAM, about 13 GB free disk. It is a git repository at
+  `github.com/actuallyssstaris/playkit` (`main`), and the work tree is normally
+  clean before handing over.
 - Compiler: `clang-18`, target `x86_64-sie-ps5`, linker `prospero-lld`.
 - PS5 payload SDK: `/root/projects/PlaySurf/.deps/native/ps5-payload-sdk`
   (`PS5_PAYLOAD_SDK`).
@@ -105,9 +107,10 @@ entering run loop
 ```
 
 - Current signed artifact on the build machine:
-  - `dist/PPSA90002/eboot.bin`, **7,379,132 bytes**
-  - SHA-256 `fad6a185a29e63d181ea184ba5415142a9cc3abcb1aae9f0a5f706847ee7a8de`
-  - deployed to the console at `192.168.2.15` via `make deploy PS5_HOST=192.168.2.15`
+  - `dist/PPSA90002/eboot.bin`, **7,387,660 bytes**
+  - SHA-256 `9d8f71c9442a3417e5e47522e483a05b586459debc6cd02fd4e66528f389fb2b`
+  - built from commit `2392d0e`-era sources; Actions run `2392d0e` passed
+  - redeploy with `make deploy PS5_HOST=192.168.2.15` only with user approval
 
 - The **PlaySurf browser shell** is integrated (`src/ui.c`, `src/browser_ui.c`).
   Home screen follows the Firefox new-tab layout: search on top, one row of
@@ -133,23 +136,37 @@ entering run loop
   - **Virtual cursor / crosshair**: left stick moves the crosshair; the touchpad
     button or Cross clicks at the cursor position. Works on home tiles, search
     bar, tab strip and chrome buttons. Always drawn on top.
+  - **Two pointers on a page**: the crosshair is the shell's pointer and stays
+    in the chrome (clamped to its bottom edge). A downward push there hands the
+    stick to the page cursor, a ring clamped to the page surface; an upward push
+    at the page's top hands back. The page cursor's clicks go through
+    `browser_ui_take_click()` and `webkit_mouse_click()` (`src/main.c` logs
+    `shell: page click X,Y`, engine side still a TODO), so a page click never
+    reaches a shell control and the crosshair never clicks the page.
+  - **Host test for the shell's pad handling**: `make test-unit` compiles
+    `src/ui.c` and `src/browser_ui.c` with `tests/host/stubs.c` and drives the
+    pad through home-tile navigation, both handovers, click routing and the back
+    button. It needs `assets/fonts` and runs from the repo root. All checks pass.
   - **PlayKit brand** appears above the search bar on the home screen.
 
 ## 5. What is running right now
 
-Nothing is running on the dev box. The previous JSC background build was
-superseded by GitHub Actions builds.
+A local **JavaScriptCore build** is running detached:
+
+```sh
+tail -f /tmp/opencode/jsc-build27.log
+```
+
+Started 2026-11-01 16:16 UTC with `nohup bash tools/build-jsc.sh`. It reached
+`[681/2426]` with no errors. `-j1`, so expect hours. The tree is resumable:
+rerun the script and it skips ICU and continues ninja.
 
 - GitHub Actions build: `.github/workflows/build.yml` runs `make app` on push
-  and `workflow_dispatch`. Last build: **success** (signed eboot 7,379,132 bytes,
-  `dist/PPSA90002/`). Artifact uploaded for 14 days.
-- JSC static-library build is **paused**. If you want to resume it:
-  `cd build/jsc && ninja -j1`, log at `/tmp/opencode/jsc-build23.log`.
-  Previous stop was a `memmem` conflict between WTF's own definition and the
-  PS5 SDK's `string.h`; fixed by not defining `HAVE_MEMMEM` on PlayStation in
-  `third_party/webkit/Source/WTF/wtf/PlatformHave.h`. The build may hit further
-  errors; resume with `ninja -j1` (it resumes from where it stopped).
-  `-j1` is deliberate: 7 GB RAM.
+  and `workflow_dispatch`. Last build `2392d0e`: **success** (signed eboot
+  7,387,660 bytes). Artifact uploaded for 14 days.
+- The status page is served on port 80 from `status/` (check with
+  `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:80/` → `200`).
+  Progress at handover: 35 done, 4 active, 2 todo, **90 %**.
 
 ## 6. Repo layout and ownership
 
@@ -206,7 +223,7 @@ authority `0x3100000000000002`.
 Check the file identity:
 
 ```sh
-stat -c %s dist/PPSA90002/eboot.bin     # must be ~18 KB, not ~75 KB
+stat -c %s dist/PPSA90002/eboot.bin     # ~7.4 MB (7,387,660 bytes at handover)
 od -An -tx1 -N8 dist/PPSA90002/eboot.bin
 # signed FSELF: 4f 15 3d 1d 00 01 01 12
 # unsigned ELF: 7f 45 4c 46 02 01 01 09   <-- wrong file
@@ -367,11 +384,15 @@ relative paths.
 
 ## 12. Next steps (in order)
 
-1. **Finish JavaScriptCore.** Let `ninja -j1` finish in `build/jsc` after the
-   `WTF_PLATFORM_PLAYSTATION` fix. Confirm
-   `libJavaScriptCore.a` exists, then link it into a host-side test or the app
-   and check symbols. Fix build errors as they appear; do not restart from
-   scratch unless the tree is corrupted.
+1. **Finish JavaScriptCore.** `bash tools/build-jsc.sh` is running detached
+   (`nohup`, log `/tmp/opencode/jsc-build27.log`, `-j1`). Rerun the same script
+   after a failure; it skips ICU and resumes ninja from the last target. When
+   `build/jsc/lib/libJavaScriptCore.a` exists, verify the archive and link it
+   into the app or a host test before moving on. The configuration fixes are
+   recorded in `docs/architecture.md` ("JSC build configuration"): exported
+   `PS5_PAYLOAD_SDK`, ICU installed into `build/icu-ps5/install`, `ICU_ROOT`
+   appended to `CMAKE_FIND_ROOT_PATH`, and real `char8_t` (the PlayStation
+   `HAVE_MISSING_U8STRING` override and `-fno-char8_t` are gone).
 2. **Build WebKit static libraries.** WebCore, WTF, and the WPE/WebKit layer
    against the PlayStation toolchain, reusing the PlayStation-specific code in
    `third_party/webkit` and `platform/ps5_compat.*`. Expect missing Sony private
@@ -418,6 +439,18 @@ relative paths.
 - `scePadOpen(0, ...)` fails with `0x809B0081`; use the logged-in user id.
 - Pad button bits are defined in `src/ps5.h`. Circle is `0x002000`; holding L3+R3
   and pressing Circle both quit the run loop.
+- `tools/build-jsc.sh` must export `PS5_PAYLOAD_SDK`; the CMake toolchain reads
+  it from the environment and aborts otherwise.
+- The toolchain searches only inside the payload SDK
+  (`CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY`), so any dependency prefix outside
+  it must be appended to `CMAKE_FIND_ROOT_PATH` or `find_library` will not see
+  it. ICU_ROOT is appended already.
+- Do not pass `-fno-char8_t` to WebKit: 2.48 uses the C++20 `char8_t` type and
+  `std::u8string`, and the SDK's libc++ provides both.
+- `make test-unit` is the shell's regression net. It links the real
+  `src/browser_ui.c` and `src/ui.c` against `tests/host/stubs.c`, so a change to
+  the pad handling that breaks a pointer or a click shows up without a console
+  round trip. Update it when the pointer rules change.
 
 ## 14. Console testing procedure
 
@@ -454,7 +487,8 @@ relative paths.
 ## 16. Style and safety rules for the next agent
 
 - Read `docs/architecture.md` and this file before changing code.
-- Investigate before deleting or overwriting. No VCS means deletions are final.
+- Investigate before deleting or overwriting. The repository is git, so a wrong
+  deletion is recoverable, but do not rely on it for untracked files.
 - Keep changes small and consistent with the existing C style: 4 spaces, braces
   on the same line, `ps5_log()` for diagnostics, no comments that restate code.
 - Every new console workaround gets a paragraph in `docs/architecture.md` with

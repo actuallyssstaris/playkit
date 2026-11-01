@@ -54,7 +54,7 @@ icu() {
         --prefix="$ICU_PS5_PREFIX" \
         CC=clang-18 CXX=clang++-18 \
         CFLAGS="--target=x86_64-sie-ps5 --sysroot=$SDK -isystem $SDK/target/include -fno-stack-protector -fno-plt -femulated-tls" \
-        CXXFLAGS="--target=x86_64-sie-ps5 --sysroot=$SDK -isystem $SDK/target/include/c++/v1 -isystem $SDK/target/include -fno-stack-protector -fno-plt -femulated-tls -fno-char8_t -frtti" \
+        CXXFLAGS="--target=x86_64-sie-ps5 --sysroot=$SDK -isystem $SDK/target/include/c++/v1 -isystem $SDK/target/include -fno-stack-protector -fno-plt -femulated-tls -frtti" \
         LDFLAGS="-L$SDK/target/lib")
     make -C "$ICU_PS5" -j4
     make -C "$ICU_PS5" install

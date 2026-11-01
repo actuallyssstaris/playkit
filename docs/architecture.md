@@ -385,9 +385,19 @@ UI; the touchpad button or Cross clicks at the cursor position. Works on home
 tiles, search bar, tab strip and chrome buttons. Always drawn on top.
 
 Fonts are the baked `.huifont` SDF atlases, packaged under `assets/fonts` and
-read from `/app0/assets/fonts` on the console. Host test renders every screen
-(`tests` harness copied from PlaySurf); console rendering verified via the
-deployed signed eboot.
+read from `/app0/assets/fonts` on the console. `make test-unit` builds the shell
+on the host (`tests/host/`) against console stubs and drives the pad; console
+rendering verified via the deployed signed eboot.
+
+**Two pointers** The shell crosshair is the shell's pointer and the page cursor
+belongs to the webpage. On a page the crosshair is clamped to the chrome; a
+downward push at its bottom edge hands the stick to the page cursor, a ring that
+is clamped to the page surface, and an upward push at the page's top hands back.
+Clicks are routed by pointer: the page cursor produces
+`browser_ui_take_click()` coordinates that `main.c` forwards to
+`webkit_mouse_click()`, and the crosshair activates the chrome control under it
+(back, forward, reload, address, menu, tab strip). The page cursor can therefore
+never reach a shell control, and the crosshair can never click the page.
 
 **JavaScriptCore** JSCOnly build stopped at `JSCBytecodeCacheVersion.cpp`:
 
@@ -411,3 +421,31 @@ Fixed by not defining `HAVE_MEMMEM` on PlayStation in
 
 Resume with: `cd build/jsc && ninja -j1` (log at
 `/tmp/opencode/jsc-build23.log`). `-j1` is deliberate: 7 GB RAM.
+
+## JSC build configuration (2026-11-01)
+
+Three defects stopped the JSCOnly configure and the first WTF compiles, all in
+the build scripts rather than in WebKit:
+
+- `tools/build-jsc.sh` computed `SDK` but never exported `PS5_PAYLOAD_SDK`, so
+  the toolchain failed with `PS5_PAYLOAD_SDK is not set`.
+- ICU was configured with `--prefix` pointing at its own build tree, which made
+  `install(1)` copy files onto themselves. It now installs into
+  `build/icu-ps5/install` and is built static only.
+- `cmake/ps5-toolchain.cmake` sets `CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY` with
+  the payload SDK as the root, so `FindICU` could not see a prefix outside it:
+  `Failed to find all ICU components (missing: ICU_INCLUDE_DIR ICU_LIBRARY ...)`.
+  `ICU_ROOT` is now appended to `CMAKE_FIND_ROOT_PATH`.
+
+The `char8_t` error was misdiagnosed earlier. WebKit 2.48 uses the C++20
+`char8_t` type and `std::u8string` directly (`FileSystem.cpp`,
+`UTF8Conversion.h`), and the SDK's libc++ provides both. A PlayStation
+`HAVE_MISSING_U8STRING` override in `PlatformHave.h` plus `-fno-char8_t` made
+those types disappear, which produced both the original
+`no matching function for call to 'unsafeSpan8'` and the later
+`use of undeclared identifier 'char8_t'`. Both were removed; the code now takes
+the ordinary `std::u8string` path. The ICU flags lost `-fno-char8_t` too, for
+consistency.
+
+The build is resumable at any point: rerun `tools/build-jsc.sh`; it skips ICU
+once the libraries exist and leaves the ninja tree in place.
