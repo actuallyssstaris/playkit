@@ -146,6 +146,7 @@ python3 - "$host" "$port" "$user" "$password" "$title_id" "$artifact" <<'PY'
 from ftplib import FTP, error_perm
 from pathlib import Path
 from posixpath import dirname, join
+import hashlib
 import sys
 
 host, port, user, password, title_id, artifact_name = sys.argv[1:]
@@ -208,6 +209,16 @@ def upload_atomic(ftp, local, remote):
 with FTP() as ftp:
     ftp.connect(host, int(port), timeout=15)
     ftp.login(user, password)
+    # ftpsrv has a SELF transfer mode: on download it returns the ELF embedded
+    # in a SELF instead of the SELF itself. With it on, a deployed signed
+    # eboot.bin reads back as an unsigned ELF and looks broken. Turn it off so
+    # the verification below compares the stored bytes.
+    try:
+        for _ in range(4):
+            if "disabled" in ftp.sendcmd("SELF"):
+                break
+    except error_perm:
+        pass
     artifact = Path(artifact_name)
     critical = [artifact / "eboot.bin", artifact / "sce_sys/param.json"]
     files = sorted(
@@ -226,6 +237,21 @@ with FTP() as ftp:
         raise RuntimeError("FTP upload completed but eboot.bin is not listed")
     if "param.json" not in list_names(ftp, join(remote_root, "sce_sys")):
         raise RuntimeError("FTP upload completed but param.json is not listed")
+    # Read the stored eboot back and compare hashes. A truncated or converted
+    # file in this position fails to launch, and the presence check above
+    # cannot tell the difference.
+    local_hash = hashlib.sha256((artifact / "eboot.bin").read_bytes()).hexdigest()
+    remote_hash = hashlib.sha256()
+
+    def digest_chunk(chunk):
+        remote_hash.update(chunk)
+
+    ftp.retrbinary(f"RETR {join(remote_root, 'eboot.bin')}", digest_chunk,
+                   blocksize=256 * 1024)
+    if remote_hash.hexdigest() != local_hash:
+        raise RuntimeError(
+            "eboot.bin on the console does not match the signed local file")
+    print("==> [deploy] eboot.bin verified byte for byte")
     print(f"Deployment complete: ftp://{host}:{port}{remote_root}/")
     try:
         ftp.quit()

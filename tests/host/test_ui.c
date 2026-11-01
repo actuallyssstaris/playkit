@@ -152,6 +152,54 @@ int main(void)
     CHECK(action == BROWSER_UI_BACK);
     CHECK(!browser_ui_take_click(&click_x, &click_y));
 
+    /* The chrome is drawn on the home screen too, so its buttons must answer
+     * the crosshair there as well. The cursor is still on the back button. */
+    browser_ui_go_home();
+    CHECK(browser_ui_is_home());
+    browser_ui_set_nav(true, false);
+    pad_step(0.0f, 0.0f, PS5_PAD_CROSS);
+    action = browser_ui_take_action(url, sizeof(url), &index);
+    CHECK(action == BROWSER_UI_BACK);
+    CHECK(!browser_ui_take_click(&click_x, &click_y));
+
+    /* ---------------------------------------------------- menu clicks */
+    /* The open menu answers the crosshair: hover a row, then click it. The
+     * menu is 460 px wide at the right edge, rows start 48 px below its top
+     * and are 56 px tall every 64 px. From the back button, aim at the
+     * "Home" row (index 6). */
+    {
+        float menu_x = (float)SCREEN_W - 460.0f - 24.0f + 8.0f;
+        float row_x = menu_x + 230.0f;
+        float row_y = (float)BROWSER_UI_CHROME_HEIGHT + 14.0f + 48.0f +
+                      6.0f * 64.0f + 28.0f;
+
+        pad_step(0.0f, 0.0f, PS5_PAD_OPTIONS);
+        move(1.0f, 0.0f, (int)((row_x - 42.0f) / STEP_X) + 1);
+        move(0.0f, 1.0f, (int)((row_y - 74.0f) / STEP_Y) + 1);
+        pad_step(0.0f, 0.0f, PS5_PAD_CROSS);
+        action = browser_ui_take_action(url, sizeof(url), &index);
+        CHECK(action == BROWSER_UI_HOME);
+        CHECK(!browser_ui_take_click(&click_x, &click_y));
+    }
+
+    /* Hovering moves the highlight, so D-pad Cross then runs the row under
+     * the crosshair. The cursor is still on "Home" (1695, 606); aim at
+     * "Zoom out" (index 9) and then move off the panel: the highlight stays,
+     * and Cross still runs it. */
+    {
+        float row_y = (float)BROWSER_UI_CHROME_HEIGHT + 14.0f + 48.0f +
+                      9.0f * 64.0f + 28.0f;
+
+        pad_step(0.0f, 0.0f, PS5_PAD_OPTIONS);
+        move(0.0f, 1.0f, (int)((row_y - 606.0f) / STEP_Y) + 1);
+        move(-1.0f, 0.0f, 40); /* out of the panel, highlight stays */
+        pad_step(0.0f, 0.0f, PS5_PAD_CROSS);
+        action = browser_ui_take_action(url, sizeof(url), &index);
+        CHECK(action == BROWSER_UI_ZOOM_OUT);
+        CHECK(!browser_ui_take_click(&click_x, &click_y));
+        pad_step(0.0f, 0.0f, PS5_PAD_CIRCLE);
+    }
+
     browser_ui_shutdown();
     if (failures != 0)
     {

@@ -656,6 +656,32 @@ static ui_rect menu_panel(void)
                      width, height};
 }
 
+/* One menu row box. draw_menu, the hit test and the pad focus all use it, so
+ * the highlight cannot drift away from the clickable area. */
+static ui_rect menu_row_rect(int index)
+{
+    ui_rect panel = menu_panel();
+
+    return (ui_rect){panel.x + 8.0f, panel.y + 48.0f + (float)index * 64.0f,
+                     panel.w - 16.0f, 56.0f};
+}
+
+/* Index of the menu row under a point, or -1. */
+static int menu_row_at(float x, float y)
+{
+    int i;
+
+    for (i = 0; i < MENU_COUNT; i++)
+    {
+        ui_rect row = menu_row_rect(i);
+
+        if (x >= row.x && x < row.x + row.w && y >= row.y &&
+            y < row.y + row.h)
+            return i;
+    }
+    return -1;
+}
+
 /* ---------------------------------------------------------- list panels */
 
 #define LIST_VISIBLE_ROWS 7
@@ -1375,8 +1401,7 @@ static void draw_menu(ui_canvas *canvas)
 
     for (i = 0; i < MENU_COUNT; i++)
     {
-        ui_rect row = {panel.x + 8.0f, panel.y + 48.0f + (float)i * 64.0f,
-                       panel.w - 16.0f, 56.0f};
+        ui_rect row = menu_row_rect(i);
         bool focused = (ui.menu_focus == i);
 
         if (focused)
@@ -1668,22 +1693,11 @@ static void handle_keyboard_pad(const ps5_pad_state *pad)
     }
 }
 
-static void handle_menu_pad(const ps5_pad_state *pad)
+/* Run the menu entry at index. Shared by the D-pad and the crosshair so both
+ * paths perform exactly the same action. */
+static void activate_menu_item(int index)
 {
-    if (pressed(pad, PS5_PAD_UP))
-        ui.menu_focus = (ui.menu_focus + MENU_COUNT - 1) % MENU_COUNT;
-    if (pressed(pad, PS5_PAD_DOWN))
-        ui.menu_focus = (ui.menu_focus + 1) % MENU_COUNT;
-    if (pressed(pad, PS5_PAD_CIRCLE) || pressed(pad, PS5_PAD_LEFT) ||
-        pressed(pad, PS5_PAD_OPTIONS))
-    {
-        ui.focus = FOCUS_PAGE;
-        return;
-    }
-    if (!pressed(pad, PS5_PAD_CROSS))
-        return;
-
-    switch (ui.menu_focus)
+    switch (index)
     {
     case MENU_TABS:
         ui.focus = FOCUS_TABS;
@@ -1737,6 +1751,40 @@ static void handle_menu_pad(const ps5_pad_state *pad)
     default:
         break;
     }
+}
+
+static void handle_menu_pad(const ps5_pad_state *pad)
+{
+    if (pressed(pad, PS5_PAD_UP))
+        ui.menu_focus = (ui.menu_focus + MENU_COUNT - 1) % MENU_COUNT;
+    if (pressed(pad, PS5_PAD_DOWN))
+        ui.menu_focus = (ui.menu_focus + 1) % MENU_COUNT;
+    if (pressed(pad, PS5_PAD_CIRCLE) || pressed(pad, PS5_PAD_LEFT) ||
+        pressed(pad, PS5_PAD_OPTIONS))
+    {
+        ui.focus = FOCUS_PAGE;
+        return;
+    }
+    if (!pressed(pad, PS5_PAD_CROSS))
+        return;
+
+    activate_menu_item(ui.menu_focus);
+}
+
+/* Crosshair over the open menu: hover moves the highlight, a click runs the
+ * row under the pointer, exactly as Cross on it would. Returns true when the
+ * click hit a row and was handled. */
+static bool handle_menu_cursor(bool clicked)
+{
+    int row = menu_row_at(ui.cursor_x, ui.cursor_y);
+
+    if (row < 0)
+        return false;
+    ui.menu_focus = row;
+    if (!clicked)
+        return false;
+    activate_menu_item(row);
+    return true;
 }
 
 /* Panel rows keep their focus and the panel closes on circle. */
@@ -2133,9 +2181,15 @@ bool browser_ui_handle_pad(const ps5_pad_state *pad, const ps5_pad_state *prev)
     }
 
     /* Crosshair click anywhere else in the chrome: back, forward, reload,
-     * address bar, menu. */
+     * address bar, menu. The chrome is visible on the home screen too, so this
+     * must not require a page. */
     if (clicked && ui.focus == FOCUS_PAGE && !ui.page_pointer &&
-        ui.screen == SCREEN_PAGE && chrome_click_at_cursor())
+        chrome_click_at_cursor())
+        return true;
+
+    /* The open menu answers the crosshair as well: hovering a row moves the
+     * highlight there, clicking it runs that entry. */
+    if (ui.focus == FOCUS_MENU && handle_menu_cursor(clicked))
         return true;
 
     switch (ui.focus)
