@@ -1,0 +1,55 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and sign PlayKit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-18 lld-18 make python3 wget tar unzip pkg-config ccache
+
+      - name: Install PS5 payload SDK
+        run: |
+          wget -q https://github.com/ps5-payload-dev/sdk/releases/latest/download/ps5-payload-sdk.zip
+          sudo unzip -q -d /opt ps5-payload-sdk.zip
+          echo "PS5_PAYLOAD_SDK=/opt/ps5-payload-sdk" >> "$GITHUB_ENV"
+
+      - name: Build app folder
+        run: make app
+
+      - name: Verify signed eboot
+        run: |
+          test -f dist/PPSA90002/eboot.bin
+          test -f dist/PPSA90002/param.json
+          test -f dist/PPSA90002/sce_module/libc.prx
+          size=$(stat -c %s dist/PPSA90002/eboot.bin)
+          echo "Signed eboot: $size bytes"
+          sha256sum dist/PPSA90002/eboot.bin
+
+      - name: Upload app folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlayKit-PPSA90002
+          path: dist/PPSA90002
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,28 @@
+[binaries]
+c = '/root/projects/PlaySurf/.deps/native/ps5-payload-sdk/bin/prospero-clang'
+cpp = '/root/projects/PlaySurf/.deps/native/ps5-payload-sdk/bin/prospero-clang++'
+ar = '/root/projects/PlaySurf/.deps/native/ps5-payload-sdk/bin/llvm-ar'
+strip = '/root/projects/PlaySurf/.deps/native/ps5-payload-sdk/bin/llvm-strip'
+ranlib = '/root/projects/PlaySurf/.deps/native/ps5-payload-sdk/bin/llvm-ranlib'
+pkgconfig = '/usr/bin/pkg-config'
+exe_wrapper = ['true']
+
+[properties]
+needs_exe_wrapper = true
+sys_root = '/root/projects/PlaySurf/.deps/native/ps5-payload-sdk'
+
+[built-in options]
+c_args = ['-fno-stack-protector', '-fno-plt', '-femulated-tls', '-include', '/root/projects/PlayKit/platform/ps5_compat.h', '-isystem', '/root/projects/PlayKit/platform/include']
+cpp_args = ['-fno-stack-protector', '-fno-plt', '-femulated-tls', '-include', '/root/projects/PlayKit/platform/ps5_compat.h', '-isystem', '/root/projects/PlayKit/platform/include']
+
+[host_machine]
+system = 'linux'
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+endian = 'little'
+
+[target_machine]
+system = 'linux'
+cpu_family = 'x86_64'
+cpu = 'x86_64'
+endian = 'little'

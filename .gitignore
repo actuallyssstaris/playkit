@@ -1,0 +1,15 @@
+# Build output
+/build/
+/dist/
+/PLAYKIT-SIGNED-EBOOT.bin
+
+# Local dependency caches
+/.deps/
+/third_party/
+
+# Host test objects
+/test/*.o
+
+# Editor and OS noise
+.DS_Store
+*.swp

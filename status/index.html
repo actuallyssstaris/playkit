@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PlayKit build status</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #14161a;
+    --panel: #1c1f26;
+    --line: #2c313b;
+    --text: #dfe3ea;
+    --dim: #8f98a8;
+    --ok: #6fbf73;
+    --work: #d8a54a;
+    --block: #c96a6a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--dim); margin: 0 0 14px; font-size: 14px; }
+  .state { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+           padding: 12px 14px; margin: 0 0 8px; font-size: 14px; }
+  .state .tag { margin-right: 8px; }
+  .progress { height: 10px; background: var(--panel); border: 1px solid var(--line);
+              border-radius: 6px; overflow: hidden; margin: 14px 0 6px; }
+  .progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, #4f8f57, var(--ok));
+                   transition: width 0.4s ease; }
+  .progress-label { color: var(--dim); font-size: 13px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 32px 0 10px; color: var(--dim); font-weight: 600;
+       text-transform: uppercase; letter-spacing: 0.06em; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  ul { list-style: none; margin: 0; padding: 4px 0; }
+  li { display: flex; gap: 10px; padding: 9px 14px; border-top: 1px solid var(--line); }
+  li:first-child { border-top: 0; }
+  input[type=checkbox] { margin-top: 3px; accent-color: var(--ok); flex: none; }
+  .label { flex: 1; }
+  .note { display: block; color: var(--dim); font-size: 13px; margin-top: 2px; }
+  .tag { flex: none; font-size: 12px; padding: 1px 7px; border-radius: 10px;
+         border: 1px solid var(--line); color: var(--dim); align-self: start; margin-top: 2px; }
+  .tag.ok { color: var(--ok); border-color: #33543a; }
+  .tag.work { color: var(--work); border-color: #574526; }
+  .tag.block { color: var(--block); border-color: #573232; }
+  .tag.todo { color: var(--dim); border-color: #333c4a; }
+  details { margin-top: 28px; color: var(--dim); font-size: 13px; }
+  summary { cursor: pointer; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+         background: #101216; padding: 1px 5px; border-radius: 4px; color: #c3cad6; }
+  .foot { margin-top: 24px; color: var(--dim); font-size: 12px; }
+  .render { margin: 0 0 10px; }
+  .render img { display: block; width: 100%; max-width: 960px; border: 1px solid var(--line);
+                border-radius: 8px; }
+  .render figcaption { color: var(--dim); font-size: 12px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>PlayKit</h1>
+  <p class="sub">WebKit browser for PS5. Build checklist, updated as work lands. Last update: 2026-10-31 20:05 UTC.</p>
+
+  <p class="state"><span class="tag work">shell landed</span>PlayKit launches on the console and shows the diagnostic frame. The PlaySurf browser shell is now integrated and host-rendered: home screen, address bar, controller keyboard, menu, tabs and downloads. The JavaScriptCore build is at 112/963 objects and currently stops on an <code>ElfW</code> shim error. Next: fix that, finish JSC, then link WebCore for real pages.</p>
+
+  <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div class="progress-fill" id="progress-fill"></div>
+  </div>
+  <p class="progress-label" id="progress-label">Calculating progress…</p>
+
+  <h2>Done and verified</h2>
+  <section>
+    <ul>
+      <li><input type="checkbox" checked disabled><span class="label">Reviewed PlaySurf source and build<small class="note">NetSurf 3.11 port. Confirmed reusable VideoOut, pad, heap, curl, download code.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Picked engine version<small class="note">WebKit 2.48.0 source, sparse checkout in third_party/webkit.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">PS5 CMake toolchain<small class="note">cmake/ps5-toolchain.cmake. Clang 18, lld, PS5 payload SDK.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">WebKit build system accepts PlayStation<small class="note">Source/cmake/WebKitCommon.cmake maps CMAKE_SYSTEM_NAME=PlayStation to a Unix build.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Host build tools installed<small class="note">cmake, ninja, ruby, perl modules, autoconf, libtool, ICU dev tools.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Host ICU 76.1 tools built<small class="note">genrb, pkgdata and the rest built from bundled ICU source for cross build.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">PS5 libc shim<small class="note">platform/ps5_compat.c adds pthread_cond_clockwait, timespec_get (required by libc++).</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">ICU 76.1 static libraries for PS5<small class="note">libicuuc, libicui18n, libicudata built for console toolchain incl. data archive.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Pixman 0.42.2 for PS5<small class="note">Static library built and installed under build/ps5.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Cairo 1.16.0 for PS5<small class="note">Image, PNG, FreeType, Fontconfig backends; no X11/EGL/GL. Static library installed.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">libwpe 1.16.2 for PS5<small class="note">Static library built, xkbcommon disabled, EGL optional. Installed under build/wpe.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">libpas portability fixes<small class="note">Lock naming compiled out; sysinfo path skipped on PlayStation; memory-extra.h shim.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">SDKs thoroughly read<small class="note">ps5-payload-sdk, ps5-native-app-boilerplate, ps5-opengl (EGL facade, Gallium driver, pkg-config/CMake, app_heap sceLibcMspace), PS5_Vulkan (runtime/libc.prx, ps5-native-tool, tools/adapt-opengl-sdk.sh, tools/rebuild-libc.sh).</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">SDK choice<small class="note">ps5-native-app-boilerplate (PlaySurf approach), not ps5link-sdk. ps5link-sdk C++ untested and lacks TLS; WebKit is C++ heavy.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Graphics backend<small class="note">ps5-opengl: OpenGL 4.6 Core via EGL, Mesa/Gallium PS5 driver, passes full GL 4.6 CTS. Replaces software Cairo rendering plan.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">libc.prx source<small class="note">PS5_Vulkan runtime/libc.prx: clean-room signed module (SHA-256 e6ff45d1...), validated on firmware 6.02 and 12.70. Generated by tools/rebuild-libc.sh.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Console online<small class="note">184.145.228.235 reachable on 9295/9021/2121. Remote Play works, ftpsrv and elfdlr responding. Console testing unblocked.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Native app entry point and lifecycle<small class="note">src/main.c: int main(void), sceSystemServiceHideSplashScreen, run loop, sceSystemServiceLoadExec("exit") on quit. Fatal paths no longer return from main: the startup object then calls libc exit(), which raises SIGSYS (CE-108255-1).</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Platform integration<small class="note">ps5_heap.c (sceLibcMspace ~384 MiB), ps5_video.c (two 16 MiB tiled RGBA8 buffers in WC direct memory, registered with VideoOut, vblank flips), ps5_pad.c (scePad via the logged-in user). All verified on the console.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Native app build system<small class="note">Makefile + build.sh: compiles, links with prospero-lld, signs a valid FSELF, produces app folder dist/PPSA90002/. Links the console libc module (libSceLibcInternal) instead of whole-archiving payload libc.a, which dragged in unresolvable weak dlfcn imports. ps5-opengl SDK linking wired in (libPS5OpenGL.a, libSceAgc*, SceVideoOut, kernel_web, SceSystemService, -u,ps5_agc_gate2_run). libc.prx copied into runtime/ and sce_sys assets packaged.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Signed eboot.bin<small class="note">build/host/ps5-native-tool is built from local tooling/native sources and signs eboot.bin. Converter validates the image: 12 segments, authority 0x3100000000000002, integrity valid, FreeBSD ABI 2, type 0xFE10. Signing failures now abort the build instead of silently deploying an unsigned ELF.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Homebrew starter review<small class="note">Reviewed MiladRTX/ps5-homebrew-starter: same ps5-native-app-boilerplate tooling, plus APP_IMPORT_STUBS (link-only stubs for system sprx missing from the SDK) and a safe FTP deploy script. Both ported; APP_IMPORT_STUBS is the path for sceCommonDialogInitialize and other system imports.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">FTP deploy tooling<small class="note">tools/deploy.sh now exists. make deploy PS5_HOST=&lt;console&gt; builds, uploads atomically, publishes eboot.bin and param.json last, and verifies both. make undeploy removes only this title.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Runs on the console<small class="note">Signed FSELF launches from /data/homebrew/PPSA90002/. Console log reaches "entering run loop": heap 384 MiB, pad opened as user 518282432, state dir ready, diagnostic renderer active. Screen shows the dark slate frame with blue border and crosshair. Fixed along the way: unsigned ELF launches, SIGSYS/CE-108255-1 from libc exit() after a pad failure, and black scanout from unregistered VideoOut buffers.</small></span><span class="tag ok">done</span></li>
+      <li><input type="checkbox" checked disabled><span class="label">Browser shell integrated<small class="note">Ported from PlaySurf: src/ui.c (SDF text, rounded boxes, icons) and src/browser_ui.c (chrome, home screen, address bar, controller keyboard, menu, tabs, bookmarks, downloads). Same pad ABI, same RGBA frame, no OpenGL. Fonts baked from Google Sans and DejaVu, packaged under assets/fonts. Host test renders every screen and passes; console run pending. Signed eboot is 62,361 bytes.</small></span><span class="tag ok">done</span></li>
+    </ul>
+  </section>
+
+  <h2>In progress</h2>
+  <section>
+    <ul>
+      <li><input type="checkbox" disabled><span class="label">JSC static-lib build<small class="note">CMake build in build/jsc resumed and reached 112/963 objects, then stopped on a real compiler error: JSCBytecodeCacheVersion.cpp uses <code>ElfW(Nhdr)</code>, which the PS5 headers do not define. Fixing the compatibility shim, then resuming with -j1.</small></span><span class="tag work">active</span></li>
+      <li><input type="checkbox" disabled><span class="label">Phased WebKit integration<small class="note">Diagnostic screen paints directly to frame buffer via VideoOut. Next: link libJavaScriptCore.a + WPEWebKit for real page rendering. Full WebKit2 multiprocess deferred.</small></span><span class="tag work">active</span></li>
+    </ul>
+  </section>
+
+  <h2>Not started</h2>
+  <section>
+    <ul>
+      <li><input type="checkbox" disabled><span class="label">WebKit integration<small class="note">WKPagePaint into OpenGL render target / TextureMapper, eglSwapBuffers present, single-process WebKit.</small></span><span class="tag todo">todo</span></li>
+
+      <li><input type="checkbox" disabled><span class="label">Downloads, cookies, storage<small class="note">WebKit data stores under /download0.</small></span><span class="tag todo">todo</span></li>
+    </ul>
+  </section>
+
+  <h2>Open problems</h2>
+  <section>
+    <ul>
+      <li><input type="checkbox" disabled><span class="label">Sony private libraries<small class="note">SceCairoForWebKit → Cairo upstream + libwpe. WebKitRequirements → build dependencies from source. ProcessLauncher → WebKit Unix ProcessLauncher or custom PS5 launcher. libpsl already in PS5 payload SDK.</small></span><span class="tag work">active</span></li>
+    </ul>
+  </section>
+
+  <details>
+    <summary>Research notes</summary>
+    <p><strong>Process launch.</strong> Sony's UI process calls a private <code>PlayStation::launchProcess</code> from WebKitRequirements. Public replacements use <code>rfork_thread</code> a template eboot, attach with <code>ptrace</code>, replace image with target ELF. Read ps5-payload-dev/elfldr (elfldr_spawn), shsrv, soniciso/sonicloader. Some builds use sceKernelSpawn (needs libkernel_sys, elevated privileges).</p>
+    <p><strong>libwpe.</strong> 1.16.2 only needs EGL headers when EGL dependency found; with <code>-Denable-xkb=false</code> and no EGL package it still builds. Sony's SceWPE backend is private, so the WebKit PlayStation port needs either that backend or a local ProcessLauncher plus open libwpe.</p>
+    <p><strong>Rendering.</strong> Sony MiniBrowser paints with <code>WKPagePaint</code> into a Cairo ARGB image surface and copies dirty rectangle to VideoOut. No GL needed. BlackBearReloaded ps5-opengl (Mesa/Gallium OpenGL 4.6 + EGL) is the option for accelerated compositing; Vulkan alone does not satisfy WebKit's EGL/GLES texture mapper.</p>
+    <p><strong>Sources.</strong> Sony OSS WebKit: neonmodder123/PS5-WebKit-11.x. Process launch: github.com/ps5-payload-dev/elfldr. GL stack: github.com/BlackBearReloaded/ps5-opengl.</p>
+  </details>
+
+  <details>
+    <summary>Build facts</summary>
+    <p>Compiler: <code>clang-18</code>, target <code>x86_64-sie-ps5</code>, linker <code>prospero-lld</code>. SDK: <code>/root/projects/PlaySurf/.deps/native/ps5-payload-sdk</code>. ICU prefix: <code>/root/projects/PlayKit/build/icu-ps5</code>.</p>
+    <p>Disk free: about 13 GB. RAM: 7 GB (tight for full WebKit build). JSC build uses -j1 to avoid OOM.</p>
+  </details>
+
+  <h2>Renders</h2>
+  <section>
+    <figure class="render">
+      <img src="renders/diagnostic-frame.png" alt="PlayKit diagnostic frame: dark slate background with a blue border and centre crosshair">
+      <figcaption>Reference render of the diagnostic frame, matching the pixel values the title sends to VideoOut. Confirmed on the console; a console capture replaces this once it can be taken without using mobile data.</figcaption>
+    </figure>
+    <figure class="render">
+      <img src="renders/shell-home.png" alt="PlayKit home screen: search field on top, a row of eight site tiles, and a bookmarks row below">
+      <figcaption>Browser shell home screen, rendered by the host test from the sources now in <code>src/</code>. Layout follows the Firefox new-tab reference: search on top, one row of site tiles with labels, then a content row. Tiles are DuckDuckGo, Wikipedia, Hacker News, GitHub, YouTube, Reddit, MDN and Stack Overflow; the lower row lists real bookmarks from <code>/download0/bookmarks.txt</code>. Not yet captured on the console.</figcaption>
+    </figure>
+    <figure class="render">
+      <img src="renders/shell-keyboard.png" alt="PlayKit controller keyboard over the home screen, with the address field and go button">
+      <figcaption>On-screen keyboard for the address bar. Cross types, Square deletes, Circle cancels, Go navigates. The same keyboard will serve page form fields once WebKit reports them.</figcaption>
+    </figure>
+    <figure class="render">
+      <img src="renders/shell-menu.png" alt="PlayKit menu panel with browser actions">
+      <figcaption>Options menu: navigation, zoom, keyboard, tabs and quit. Actions that need the engine report that WebKit is not linked yet instead of pretending to work.</figcaption>
+    </figure>
+    <figure class="render">
+      <img src="renders/shell-tabs.png" alt="PlayKit tab switcher listing open tabs">
+      <figcaption>Tab switcher. The shell tracks tabs already; PlayKit runs one engine view until WebKit links, so extra tabs report that limit.</figcaption>
+    </figure>
+    <figure class="render">
+      <img src="renders/shell-page.png" alt="PlayKit page view with the chrome bar above a page area">
+      <figcaption>Page view: chrome bar over the engine surface. The page area currently shows the diagnostic painter; it becomes the WebKit paint target when WebCore links.</figcaption>
+    </figure>
+    <ul>
+      <li><span class="label"><input type="checkbox" checked disabled> App diagnostic screen<small class="note">Dark slate frame, blue border, centre crosshair, drawn at 1920x1080, tiled into a registered VideoOut buffer and flipped at vblank. Visible on the console after replacing the signed eboot.</small></span><span class="tag ok">done</span></li>
+      <li><span class="label"><input type="checkbox" checked disabled> Browser shell screens<small class="note">Home, keyboard, menu, tabs and page view rendered at 1920x1080 by tests/host/test_browser_ui.c against the PlayKit sources. PPM output converted to PNG for this page.</small></span><span class="tag ok">done</span></li>
+    </ul>
+  </section>
+
+  <p class="foot">Static page served on port 80. Checked items are built and locally verified; on-console results are stated per item.</p>
+</main>
+<script>
+  (() => {
+    const tags = [...document.querySelectorAll('main li .tag')];
+    const done = tags.filter((tag) => tag.classList.contains('ok')).length;
+    const active = tags.filter((tag) => tag.classList.contains('work')).length;
+    const todo = tags.filter((tag) => tag.classList.contains('todo')).length;
+    const total = done + active + todo;
+    const percent = total === 0 ? 0 : Math.round(((done + active * 0.5) / total) * 100);
+    const bar = document.querySelector('.progress');
+    document.getElementById('progress-fill').style.width = percent + '%';
+    document.getElementById('progress-label').textContent =
+      percent + '% complete · ' + done + ' done · ' + active + ' active · ' + todo + ' not started';
+    bar.setAttribute('aria-valuenow', String(percent));
+  })();
+</script>
+</body>
+</html>
