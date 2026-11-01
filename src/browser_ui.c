@@ -203,6 +203,7 @@ static struct
      * clicks at the cursor position. */
     float cursor_x;
     float cursor_y;
+    bool cursor_active; /* the stick has moved the cursor at least once */
 
     float time;
 } ui;
@@ -1468,9 +1469,11 @@ static void handle_home_pad(const ps5_pad_state *pad)
         return;
     }
 
-    /* Virtual cursor: touchpad/cross clicks what is under it. Cross still
-     * activates the D-pad focus when it points at empty space. */
-    if (pressed(pad, PS5_PAD_TOUCH_PAD) || pressed(pad, PS5_PAD_CROSS))
+    /* Virtual cursor click. The touchpad always clicks at the cursor; Cross
+     * does too once the stick has moved the cursor, so D-pad navigation
+     * still works before that. */
+    if (pressed(pad, PS5_PAD_TOUCH_PAD) ||
+        (ui.cursor_active && pressed(pad, PS5_PAD_CROSS)))
     {
         ui_rect search = home_search_rect();
         int i;
@@ -1493,8 +1496,7 @@ static void handle_home_pad(const ps5_pad_state *pad)
                 return;
             }
         }
-        if (pressed(pad, PS5_PAD_TOUCH_PAD))
-            return; /* touchpad click on empty space does nothing */
+        return; /* a click on empty space does nothing */
     }
 
     if (pressed(pad, PS5_PAD_UP) && ui.home_focus > 0)
@@ -1887,6 +1889,9 @@ bool browser_ui_handle_pad(const ps5_pad_state *pad, const ps5_pad_state *prev)
             dx = 0.0f;
         if (fabsf(dy) < deadzone)
             dy = 0.0f;
+
+        if (dx != 0.0f || dy != 0.0f)
+            ui.cursor_active = true;
 
         /* Square the response so small pushes are precise and full pushes
          * cross the screen quickly. */
