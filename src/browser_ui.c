@@ -194,11 +194,20 @@ static struct
     browser_ui_action action;
     int action_index;
 
-    /* Virtual cursor driven by the left stick; the touchpad button / cross
-     * clicks at the cursor position. */
+    /* Two pointers, both driven by the left stick. The crosshair belongs to
+     * the shell and never leaves the chrome on a page; the page cursor
+     * belongs to the webpage and never leaves the page surface. */
     float cursor_x;
     float cursor_y;
-    bool cursor_active; /* the stick has moved the cursor at least once */
+    bool cursor_active; /* the stick has moved the crosshair at least once */
+    float page_x;
+    float page_y;
+    bool page_pointer; /* the stick currently drives the page cursor */
+
+    /* A page click produced by the page cursor, in frame coordinates. */
+    bool page_click;
+    int page_click_x;
+    int page_click_y;
 
     float time;
 } ui;
@@ -1406,6 +1415,66 @@ static bool pressed(const ps5_pad_state *pad, uint32_t button)
     return (pad->pressed & button) != 0;
 }
 
+static void activate_chrome_focus(void)
+{
+    switch (ui.chrome_focus)
+    {
+    case CHROME_BACK:
+        if (ui.can_back)
+            set_action(BROWSER_UI_BACK);
+        break;
+    case CHROME_FORWARD:
+        if (ui.can_forward)
+            set_action(BROWSER_UI_FORWARD);
+        break;
+    case CHROME_RELOAD:
+        set_action(ui.loading ? BROWSER_UI_STOP : BROWSER_UI_RELOAD);
+        break;
+    case CHROME_ADDRESS:
+        open_keyboard(true, ui.address);
+        break;
+    case CHROME_MENU:
+        open_menu();
+        break;
+    default:
+        break;
+    }
+}
+
+/* Crosshair click on the chrome: activate the control under the pointer.
+ * Returns true when it hit something. */
+static bool chrome_click_at_cursor(void)
+{
+    ui_rect address = address_box();
+    int i;
+
+    if (ui.cursor_x >= address.x && ui.cursor_x < address.x + address.w &&
+        ui.cursor_y >= address.y && ui.cursor_y < address.y + address.h)
+    {
+        ui.focus = FOCUS_CHROME;
+        ui.chrome_focus = CHROME_ADDRESS;
+        activate_chrome_focus();
+        return true;
+    }
+    for (i = 0; i < CHROME_COUNT; i++)
+    {
+        ui_rect box;
+
+        if (i == CHROME_ADDRESS)
+            continue;
+        box = chrome_button_box(i);
+        if (ui.cursor_x >= box.x && ui.cursor_x < box.x + box.w &&
+            ui.cursor_y >= box.y && ui.cursor_y < box.y + box.h)
+        {
+            ui.focus = FOCUS_CHROME;
+            ui.chrome_focus = i;
+            activate_chrome_focus();
+            return true;
+        }
+    }
+    return false;
+}
+
 static void handle_chrome_pad(const ps5_pad_state *pad)
 {
     if (pressed(pad, PS5_PAD_LEFT))
@@ -1429,30 +1498,7 @@ static void handle_chrome_pad(const ps5_pad_state *pad)
         return;
     }
     if (pressed(pad, PS5_PAD_CROSS))
-    {
-        switch (ui.chrome_focus)
-        {
-        case CHROME_BACK:
-            if (ui.can_back)
-                set_action(BROWSER_UI_BACK);
-            break;
-        case CHROME_FORWARD:
-            if (ui.can_forward)
-                set_action(BROWSER_UI_FORWARD);
-            break;
-        case CHROME_RELOAD:
-            set_action(ui.loading ? BROWSER_UI_STOP : BROWSER_UI_RELOAD);
-            break;
-        case CHROME_ADDRESS:
-            open_keyboard(true, ui.address);
-            break;
-        case CHROME_MENU:
-            open_menu();
-            break;
-        default:
-            break;
-        }
-    }
+        activate_chrome_focus();
 }
 
 static void handle_home_pad(const ps5_pad_state *pad)
@@ -1885,19 +1931,56 @@ void browser_ui_show_status(const char *text)
     ui.status_until = ui.time + 4.0f;
 }
 
+/* Distance the page cursor keeps from the page edge, so its ring never
+ * overlaps the chrome or leaves the screen. */
+#define POINTER_MARGIN 14.0f
+
+static float clampf(float value, float low, float high)
+{
+    if (value < low)
+        return low;
+    if (value > high)
+        return high;
+    return value;
+}
+
+/* The crosshair is the shell's pointer. On a page it is confined to the
+ * chrome; on the home screen and in the shell panels it roams the screen. */
+static void clamp_crosshair(void)
+{
+    float bottom = (float)ui.height - 1.0f;
+
+    if (ui.screen == SCREEN_PAGE)
+        bottom = chrome_height() - 1.0f;
+    ui.cursor_x = clampf(ui.cursor_x, 0.0f, (float)ui.width - 1.0f);
+    ui.cursor_y = clampf(ui.cursor_y, 0.0f, bottom);
+}
+
+/* The page cursor is confined to the page surface, below the chrome. */
+static void clamp_page_pointer(void)
+{
+    ui_rect area = content_area();
+
+    ui.page_x = clampf(ui.page_x, POINTER_MARGIN,
+                       (float)ui.width - POINTER_MARGIN);
+    ui.page_y = clampf(ui.page_y, area.y + POINTER_MARGIN,
+                       area.y + area.h - POINTER_MARGIN);
+}
+
 bool browser_ui_handle_pad(const ps5_pad_state *pad, const ps5_pad_state *prev)
 {
     (void)prev;
     if (!ui.ready || pad == NULL || !pad->connected)
         return false;
 
-    /* ------------------------------------------------ virtual cursor */
+    /* ------------------------------------------------ two pointers */
     /* ps5_pad_poll already normalises the sticks to -1..1, so the axis
      * value is the direction. A small deadzone stops drift at rest. */
     {
         const float deadzone = 0.15f;
         float dx = pad->left_x;
         float dy = pad->left_y;
+        bool split = ui.screen == SCREEN_PAGE && ui.focus == FOCUS_PAGE;
 
         if (fabsf(dx) < deadzone)
             dx = 0.0f;
@@ -1912,20 +1995,68 @@ bool browser_ui_handle_pad(const ps5_pad_state *pad, const ps5_pad_state *prev)
         dx = dx * fabsf(dx);
         dy = dy * fabsf(dy);
 
-        ui.cursor_x += dx * 1600.0f * (1.0f / 60.0f);
-        ui.cursor_y += dy * 1100.0f * (1.0f / 60.0f);
+        /* The home screen and the shell panels are shell-only: there is no
+         * page cursor to hand over to. */
+        if (!split)
+            ui.page_pointer = false;
 
-        if (ui.cursor_x < 0.0f) ui.cursor_x = 0.0f;
-        if (ui.cursor_x > (float)ui.width - 1.0f) ui.cursor_x = (float)ui.width - 1.0f;
-        if (ui.cursor_y < 0.0f) ui.cursor_y = 0.0f;
-        if (ui.cursor_y > (float)ui.height - 1.0f) ui.cursor_y = (float)ui.height - 1.0f;
+        if (split && ui.page_pointer)
+        {
+            ui_rect area = content_area();
+            float top = area.y + POINTER_MARGIN;
+            bool at_top = ui.page_y <= top + 1.0f;
+
+            ui.page_x += dx * 1600.0f * (1.0f / 60.0f);
+            ui.page_y += dy * 1100.0f * (1.0f / 60.0f);
+            clamp_page_pointer();
+
+            /* Continued push against the top of the page hands the stick back
+             * to the crosshair, which appears just below the chrome. */
+            if (dy < 0.0f && at_top)
+            {
+                ui.page_pointer = false;
+                ui.cursor_x = clampf(ui.page_x, 0.0f, (float)ui.width - 1.0f);
+                ui.cursor_y = chrome_height() - 1.0f;
+            }
+        }
+        else
+        {
+            bool at_bottom = split && ui.cursor_y >= chrome_height() - 1.5f;
+
+            ui.cursor_x += dx * 1600.0f * (1.0f / 60.0f);
+            ui.cursor_y += dy * 1100.0f * (1.0f / 60.0f);
+            clamp_crosshair();
+
+            /* Continued push against the bottom of the chrome hands the stick
+             * to the page cursor. */
+            if (split && dy > 0.0f && at_bottom)
+            {
+                ui.page_pointer = true;
+                ui.page_x = clampf(ui.cursor_x, POINTER_MARGIN,
+                                   (float)ui.width - POINTER_MARGIN);
+                ui.page_y = content_area().y + POINTER_MARGIN;
+            }
+        }
     }
 
     bool clicked = pressed(pad, PS5_PAD_TOUCH_PAD) || pressed(pad, PS5_PAD_CROSS);
 
+    /* Page click: the page cursor only ever clicks the page, so it can never
+     * reach a shell control. */
+    if (clicked && ui.screen == SCREEN_PAGE && ui.focus == FOCUS_PAGE &&
+        ui.page_pointer)
+    {
+        ui.page_click = true;
+        ui.page_click_x = (int)(ui.page_x + 0.5f);
+        ui.page_click_y = (int)(ui.page_y + 0.5f);
+        return true;
+    }
+
     /* Tab strip click: activate a tab, close it, or open a new one.
-     * Only when the shell has focus (not while a menu or keyboard is open). */
-    if (clicked && ui.focus == FOCUS_PAGE)
+     * Only the shell crosshair does this; the page cursor never reaches the
+     * chrome. */
+    if (clicked && ui.focus == FOCUS_PAGE && !ui.page_pointer &&
+        ui.screen == SCREEN_PAGE)
     {
         float strip_h = chrome_height() - 84.0f;
         if (ui.cursor_y < strip_h)
@@ -1992,6 +2123,12 @@ bool browser_ui_handle_pad(const ps5_pad_state *pad, const ps5_pad_state *prev)
         }
     }
 
+    /* Crosshair click anywhere else in the chrome: back, forward, reload,
+     * address bar, menu. */
+    if (clicked && ui.focus == FOCUS_PAGE && !ui.page_pointer &&
+        ui.screen == SCREEN_PAGE && chrome_click_at_cursor())
+        return true;
+
     switch (ui.focus)
     {
     case FOCUS_KEYBOARD:
@@ -2019,8 +2156,9 @@ bool browser_ui_handle_pad(const ps5_pad_state *pad, const ps5_pad_state *prev)
             return true;
         }
         /* The page keeps the pad; the shell only takes the shortcuts that
-         * the page has no use for. */
-        if (pressed(pad, PS5_PAD_TRIANGLE) || pressed(pad, PS5_PAD_TOUCH_PAD))
+         * the page has no use for. Touchpad is a click for the active
+         * pointer, handled above, so it does not jump to the chrome. */
+        if (pressed(pad, PS5_PAD_TRIANGLE))
         {
             ui.focus = FOCUS_CHROME;
             ui.chrome_focus = CHROME_ADDRESS;
@@ -2049,6 +2187,18 @@ browser_ui_action browser_ui_take_action(char *url, size_t url_size, int *index)
     return action;
 }
 
+bool browser_ui_take_click(int *x, int *y)
+{
+    bool clicked = ui.page_click;
+
+    ui.page_click = false;
+    if (x != NULL)
+        *x = ui.page_click_x;
+    if (y != NULL)
+        *y = ui.page_click_y;
+    return clicked;
+}
+
 void browser_ui_set_tabs(int count, int active, const char *const *titles)
 {
     int i;
@@ -2075,7 +2225,8 @@ const char *browser_ui_address(void)
 
 bool browser_ui_pointer_visible(void)
 {
-    return ui.ready && ui.focus == FOCUS_PAGE && ui.screen == SCREEN_PAGE;
+    return ui.ready && ui.focus == FOCUS_PAGE && ui.screen == SCREEN_PAGE &&
+           ui.page_pointer;
 }
 
 void browser_ui_render(uint32_t *frame, int width, int height, int stride,
@@ -2129,8 +2280,10 @@ void browser_ui_render(uint32_t *frame, int width, int height, int stride,
         draw_downloads(&canvas);
     draw_status(&canvas);
 
-    /* Crosshair / virtual cursor, always on top. Dark halo plus a white cross
-     * stays visible on both themes and on top of favicons. */
+    /* Crosshair, the shell's pointer: always on top, drawn only while the
+     * shell owns the stick. Dark halo plus a white cross stays visible on
+     * both themes and on top of favicons. */
+    if (!(ui.screen == SCREEN_PAGE && ui.page_pointer))
     {
         float cx = ui.cursor_x, cy = ui.cursor_y;
         float size = 22.0f;
@@ -2143,5 +2296,18 @@ void browser_ui_render(uint32_t *frame, int width, int height, int stride,
         ui_fill_rect(&canvas, (ui_rect){cx - size * 0.5f, cy - 1.0f, size, 2.0f}, 0.0f, c);
         ui_fill_rect(&canvas, (ui_rect){cx - 3.5f, cy - 3.5f, 7.0f, 7.0f}, 3.5f, halo);
         ui_fill_rect(&canvas, (ui_rect){cx - 1.5f, cy - 1.5f, 3.0f, 3.0f}, 1.5f, c);
+    }
+
+    /* Page cursor: a ring with a dot, deliberately unlike the crosshair, so
+     * it reads as "this clicks the webpage". It stays inside the page. */
+    if (ui.screen == SCREEN_PAGE && ui.page_pointer)
+    {
+        ui_colour halo = ui_with_alpha(ui_rgb(0x000000), 0.55f);
+        ui_colour ring = ui_rgb(0xffffff);
+
+        ui_circle(&canvas, ui.page_x, ui.page_y, 11.0f, halo);
+        ui_circle(&canvas, ui.page_x, ui.page_y, 9.0f, ring);
+        ui_circle(&canvas, ui.page_x, ui.page_y, 7.5f, ui_with_alpha(ui_rgb(0x000000), 0.35f));
+        ui_circle(&canvas, ui.page_x, ui.page_y, 3.0f, ring);
     }
 }

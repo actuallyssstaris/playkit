@@ -15,6 +15,9 @@ SDK=${PS5_PAYLOAD_SDK:-/root/projects/PlaySurf/.deps/native/ps5-payload-sdk}
 ICU_SRC=$ROOT/third_party/icu/source
 ICU_HOST=$ROOT/build/icu-host
 ICU_PS5=$ROOT/build/icu-ps5
+# ICU installs into a subfolder: installing into the build tree itself makes
+# install(1) copy a file onto itself.
+ICU_PS5_PREFIX=$ICU_PS5/install
 JSC_BUILD=$ROOT/build/jsc
 
 if [[ ! -d $SDK ]]; then
@@ -26,8 +29,8 @@ fi
 export PATH="$SDK/bin:$PATH"
 
 icu() {
-    if [[ -f $ICU_PS5/lib/libicuuc.a && -f $ICU_PS5/lib/libicui18n.a && -f $ICU_PS5/lib/libicudata.a ]]; then
-        echo "==> [icu] already built in $ICU_PS5"
+    if [[ -f $ICU_PS5_PREFIX/lib/libicuuc.a && -f $ICU_PS5_PREFIX/lib/libicui18n.a && -f $ICU_PS5_PREFIX/lib/libicudata.a ]]; then
+        echo "==> [icu] already built in $ICU_PS5_PREFIX"
         return
     fi
 
@@ -45,7 +48,8 @@ icu() {
         --host=x86_64-unknown-freebsd \
         --with-cross-build="$ICU_HOST" \
         --disable-samples --disable-tests --disable-extras --disable-tools \
-        --prefix="$ICU_PS5" \
+        --disable-shared --enable-static \
+        --prefix="$ICU_PS5_PREFIX" \
         CC=clang-18 CXX=clang++-18 \
         CFLAGS="--target=x86_64-sie-ps5 --sysroot=$SDK -isystem $SDK/target/include -fno-stack-protector -fno-plt -femulated-tls" \
         CXXFLAGS="--target=x86_64-sie-ps5 --sysroot=$SDK -isystem $SDK/target/include/c++/v1 -isystem $SDK/target/include -fno-stack-protector -fno-plt -femulated-tls -fno-char8_t -frtti" \
@@ -67,7 +71,7 @@ configure_jsc() {
         -DPORT=JSCOnly \
         -DCMAKE_TOOLCHAIN_FILE="$ROOT/cmake/ps5-toolchain.cmake" \
         -DCMAKE_BUILD_TYPE=Release \
-        -DICU_ROOT="$ICU_PS5" \
+        -DICU_ROOT="$ICU_PS5_PREFIX" \
         -DENABLE_JIT=OFF \
         -DENABLE_SAMPLES=OFF \
         -DENABLE_TOOLS=OFF \

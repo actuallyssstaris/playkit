@@ -18,6 +18,10 @@ void webkit_paint_frame(uint32_t *pixels);
 /* Load a URL into the page. */
 void webkit_load_url(const char *url);
 
+/* Click the page at (x, y) in composited-frame pixels. The shell sends this
+ * only for the page cursor, never for the crosshair. */
+void webkit_mouse_click(int x, int y);
+
 /* Shut down WebKit. */
 void webkit_shutdown(void);
 

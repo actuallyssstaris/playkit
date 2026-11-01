@@ -84,6 +84,17 @@ void webkit_load_url(const char *url)
      * WKPageLoadURL call. For now the URL is logged only. */
 }
 
+void webkit_mouse_click(int x, int y)
+{
+    if (!g_webkit_initialized)
+        return;
+
+    ps5_log("webkit: mouse click %d,%d\n", x, y);
+
+    /* TODO: once WPEWebKit is linked, forward this as a pointer press and
+     * release through the view's input handler. */
+}
+
 void webkit_shutdown(void)
 {
     if (!g_webkit_initialized)

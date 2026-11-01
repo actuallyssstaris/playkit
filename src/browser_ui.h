@@ -70,6 +70,11 @@ bool browser_ui_handle_pad(const ps5_pad_state *pad, const ps5_pad_state *prev);
  * fill index. */
 browser_ui_action browser_ui_take_action(char *url, size_t url_size, int *index);
 
+/* The page click the page cursor produced, if any, in composited-frame
+ * coordinates. The page cursor never clicks the shell, so this is only ever
+ * a webpage click. */
+bool browser_ui_take_click(int *x, int *y);
+
 /* The tabs the shell lists: their titles and which one is showing. */
 void browser_ui_set_tabs(int count, int active, const char *const *titles);
 
@@ -80,8 +85,8 @@ void browser_ui_render(uint32_t *frame, int width, int height, int stride,
 /* The address the address bar is showing, for the caller's own use. */
 const char *browser_ui_address(void);
 
-/* True while the page owns the pad: the caller draws its pointer then, and
- * hides it whenever the shell has the focus. */
+/* True while the stick drives the page cursor: the page owns the pointer,
+ * the shell crosshair is hidden, and clicks go to the webpage. */
 bool browser_ui_pointer_visible(void);
 
 #endif /* PLAYKIT_BROWSER_UI_H */

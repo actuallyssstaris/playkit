@@ -97,6 +97,7 @@ static void shell_actions(void)
     char url[1024];
     browser_ui_action action;
     int index = 0;
+    int click_x = 0, click_y = 0;
 
     while ((action = browser_ui_take_action(url, sizeof(url), &index)) != BROWSER_UI_NONE) {
         switch (action) {
@@ -133,6 +134,12 @@ static void shell_actions(void)
         default:
             break;
         }
+    }
+
+    /* Clicks from the page cursor go to the webpage only. */
+    while (browser_ui_take_click(&click_x, &click_y)) {
+        ps5_log("shell: page click %d,%d\n", click_x, click_y);
+        webkit_mouse_click(click_x, click_y);
     }
 }
 
