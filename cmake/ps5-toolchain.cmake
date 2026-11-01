@@ -16,9 +16,13 @@ set(CMAKE_RANLIB "${PS5_PAYLOAD_SDK}/bin/llvm-ranlib")
 set(CMAKE_NM "${PS5_PAYLOAD_SDK}/bin/llvm-nm")
 
 set(CMAKE_SYSROOT "${PS5_PAYLOAD_SDK}")
-set(CMAKE_C_FLAGS_INIT "-isystem ${PS5_PAYLOAD_SDK}/target/include -fno-stack-protector -fno-plt -femulated-tls -include /root/projects/PlayKit/platform/ps5_compat.h -isystem /root/projects/PlayKit/platform/include")
+# Absolute paths here, not ${CMAKE_SOURCE_DIR}: the toolchain is read before a
+# project exists, and the source directory name differs on CI (the repository
+# is checked out under /home/runner/work/playkit/playkit).
+get_filename_component(PLAYKIT_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+set(CMAKE_C_FLAGS_INIT "-isystem ${PS5_PAYLOAD_SDK}/target/include -fno-stack-protector -fno-plt -femulated-tls -include ${PLAYKIT_ROOT}/platform/ps5_compat.h -isystem ${PLAYKIT_ROOT}/platform/include")
 # WebKit 2.48 uses char8_t and std::u8string, so C++20 char8_t stays enabled.
-set(CMAKE_CXX_FLAGS_INIT "-isystem ${PS5_PAYLOAD_SDK}/target/include/c++/v1 -isystem ${PS5_PAYLOAD_SDK}/target/include -fno-stack-protector -fno-plt -femulated-tls -include /root/projects/PlayKit/platform/ps5_compat.h -isystem /root/projects/PlayKit/platform/include")
+set(CMAKE_CXX_FLAGS_INIT "-isystem ${PS5_PAYLOAD_SDK}/target/include/c++/v1 -isystem ${PS5_PAYLOAD_SDK}/target/include -fno-stack-protector -fno-plt -femulated-tls -include ${PLAYKIT_ROOT}/platform/ps5_compat.h -isystem ${PLAYKIT_ROOT}/platform/include")
 set(PS5_LIB_DIR "${PS5_PAYLOAD_SDK}/target/lib")
 set(PS5_LINK_FLAGS "-L${PS5_LIB_DIR} -Wl,--whole-archive -lc++ -lc++abi -lc -lunwind -Wl,--no-whole-archive -lkernel -lSceLibcInternal -ldl")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "${PS5_LINK_FLAGS}")

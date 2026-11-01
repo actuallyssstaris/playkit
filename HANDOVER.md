@@ -1,6 +1,6 @@
 # PlayKit handover
 
-Last updated: 2026-11-01 16:30 UTC, by the current agent. Read this file fully before
+Last updated: 2026-11-01 17:30 UTC, by the current agent. Read this file fully before
 touching anything. It contains the current state, the exact commands, and every
 failure already diagnosed so you do not repeat them.
 
@@ -47,9 +47,12 @@ success), and must be served on port 80 with a working progress bar and renders.
 
 ## 3. Environment
 
-- Dev box: Linux, 7 GB RAM, about 13 GB free disk. It is a git repository at
-  `github.com/actuallyssstaris/playkit` (`main`), and the work tree is normally
-  clean before handing over.
+- Dev box: Linux, **aarch64**, 7 GB RAM, about 13 GB free disk. This matters:
+  WebKit cross-compiles for `x86_64-sie-ps5`, so its helper programs are x86
+  PlayStation binaries and **cannot be executed here** (no PS5 syscalls, qemu
+  cannot substitute libSceLibcInternal). They are only ever *read*, never run —
+  see section 17. A git repository at `github.com/actuallyssstaris/playkit`
+  (`main`), and the work tree is normally clean before handing over.
 - Compiler: `clang-18`, target `x86_64-sie-ps5`, linker `prospero-lld`.
 - PS5 payload SDK: `/root/projects/PlaySurf/.deps/native/ps5-payload-sdk`
   (`PS5_PAYLOAD_SDK`).
@@ -151,21 +154,40 @@ entering run loop
 
 ## 5. What is running right now
 
-A local **JavaScriptCore build** is running detached:
+- **Local JavaScriptCore build**, detached, `-j1`, resumable:
 
-```sh
-tail -f /tmp/opencode/jsc-build27.log
-```
+  ```sh
+  tail -f /tmp/opencode/jsc-build29.log
+  ```
 
-Started 2026-11-01 16:16 UTC with `nohup bash tools/build-jsc.sh`. It reached
-`[681/2426]` with no errors. `-j1`, so expect hours. The tree is resumable:
-rerun the script and it skips ICU and continues ninja.
+  Started 2026-11-01 17:13 UTC with
+  `export PATH=$SDK/bin:$PATH; ninja -C build/jsc -j1` after
+  `-Wl,-u,main` was added for the two LLInt tools. Reached `[158/1091]` at
+  17:23 UTC with no errors. Hours, not minutes: one clang++ at a time on 7 GB.
 
-- GitHub Actions build: `.github/workflows/build.yml` runs `make app` on push
-  and `workflow_dispatch`. Last build `2392d0e`: **success** (signed eboot
-  7,387,660 bytes). Artifact uploaded for 14 days.
-- The status page is served on port 80 from `status/` (check with
-  `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:80/` → `200`).
+- **GitHub Actions JavaScriptCore build**: `.github/workflows/jsc.yml`
+  (`workflow_dispatch`, or on pushes that touch the JSC inputs). x86-64, 4
+  cores, ccache and ICU caching, uploads `jsc-ps5` with
+  `libJavaScriptCore.a`/`libWTF.a`/`libbmalloc.a`. The first run failed on a
+  hard-coded `/root/projects/PlayKit/...` include path in
+  `cmake/ps5-toolchain.cmake`; that is now `${CMAKE_CURRENT_LIST_DIR}/..`, so
+  rerun it.
+
+- **Status page**: served on port 8000 from `status/`
+  (`cd status && python3 -m http.server 8000 --bind 127.0.0.1`). Its live
+  JavaScriptCore bar polls `build.json` every 10 s, and a local writer keeps
+  that file current:
+
+  ```sh
+  while true; do bash tools/build-progress.sh /tmp/opencode/jsc-build29.log \
+      status/build.json local; sleep 10; done
+  ```
+
+  CI publishes the same document, force-pushed to the `build-status` branch, so
+  the page also updates when the build runs on GitHub.
+
+- App build: `.github/workflows/build.yml` runs `make app` on every push
+  (last: **success**). Deploy to the console is `make deploy PS5_HOST=…`.
   Progress at handover: 35 done, 4 active, 2 todo, **90 %**.
 
 ## 6. Repo layout and ownership
@@ -374,7 +396,16 @@ The progress bar is computed in the page script from the tags:
 - `<span class="tag todo">` → not started, weight 0
 
 Percent = `round((done + active*0.5) / total * 100)`.
-At handover: 26 done, 3 active, 3 todo, **86 %**.
+At handover: 35 done, 4 active, 2 todo, **90 %**.
+
+The second bar is the live JavaScriptCore build and is *not* hand-maintained.
+It polls `build.json` every 10 s: the local file written by
+`tools/build-progress.sh` while a build runs here, otherwise the copy CI
+force-pushes to the `build-status` branch
+(`raw.githubusercontent.com/actuallyssstaris/playkit/build-status/build.json`,
+fetched with a cache-busting query). `status/build.json` is gitignored.
+Keep the writer running during long builds or the bar goes stale after 3
+minutes and falls back to the remote copy.
 
 Only put an item under "Done and verified" when it is actually built and, where
 applicable, observed on the console. Keep the note text specific: commands,
@@ -497,3 +528,50 @@ relative paths.
   Remote Play for long periods; it costs them data.
 - Do not publish an unsigned eboot. Do not claim success without the log or a
   visible result.
+
+## 17. JavaScriptCore build: what was actually wrong (2026-11-01)
+
+Read this before touching the JSC build; every trap below already cost a
+build run.
+
+1. **The LLInt tools are never executed.** `generate_offset_extractor.rb` and
+   `asm.rb` *scan the tool binary* for magic numbers (`0x2e43fd66 0x4379bfba`)
+   and read the index that follows. The tools are PlayStation executables
+   (`x86_64-sie-ps5`, linked against `libSceLibcInternal`) and cannot run on
+   this aarch64 box — that is fine, nothing tries to run them. Do not waste
+   time on qemu.
+2. **The magic table was being garbage-collected.** A PlayStation executable
+   has no `_start`, so `--gc-sections` treated `main` and its 9 MB
+   `settingsExtractorTable` as unreachable: the binary came out 721 KB with no
+   magic, and the generator exited 1. Fix (patched into
+   `third_party/webkit/Source/JavaScriptCore/CMakeLists.txt`, carried in
+   `tools/patches/webkit-2.48-playstation.patch`):
+   `target_link_options(... PRIVATE "-Wl,-u,main")` for
+   `LLIntSettingsExtractor` and `LLIntOffsetsExtractor`. The tool should be
+   ~10 MB afterwards.
+3. **`LLIntDesiredSettings.h` is generated once per configuration set.**
+   `-DENABLE_JIT=OFF` is fine, but the generated file is 42 MB and takes a
+   while; do not interrupt it.
+4. **Host toolchain paths must be relative.** `cmake/ps5-toolchain.cmake`
+   used absolute `/root/projects/PlayKit/...` include paths, which broke the
+   CI checkout. It now derives them from `${CMAKE_CURRENT_LIST_DIR}`.
+   Reconfigure from scratch if the old flags are still in `CMakeCache.txt`.
+
+Working commands:
+
+```sh
+# once, on a clean machine (untracked WebKit + ICU are large)
+bash tools/fetch-sources.sh
+
+# build; resumable, skip ICU when it exists, -j1 on this box
+export PS5_PAYLOAD_SDK=/root/projects/PlaySurf/.deps/native/ps5-payload-sdk
+export PATH="$PS5_PAYLOAD_SDK/bin:$PATH"
+ninja -C build/jsc -j1            # or: bash tools/build-jsc.sh
+
+# prefer GitHub Actions for a full build: .github/workflows/jsc.yml,
+# ubuntu-24.04, artifact jsc-ps5
+```
+
+Outputs: `build/jsc/lib/libJavaScriptCore.a`, `libWTF.a`, `libbmalloc.a`,
+`build/icu-ps5/install/lib/libicu*.a`. Nothing is linked into the app yet.
+

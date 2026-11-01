@@ -34,6 +34,12 @@
   .progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, #4f8f57, var(--ok));
                    transition: width 0.4s ease; }
   .progress-label { color: var(--dim); font-size: 13px; margin: 0 0 4px; }
+  .live-detail { color: var(--dim); font-size: 13px; margin: 0; padding: 0 0 14px;
+                 overflow-wrap: anywhere; }
+  .live .progress { margin: 14px 0 6px; }
+  .live { padding: 0 14px; }
+  .live .progress-fill.failed { background: var(--block); }
+  .live .progress-fill.done { background: var(--ok); }
   h2 { font-size: 16px; margin: 32px 0 10px; color: var(--dim); font-weight: 600;
        text-transform: uppercase; letter-spacing: 0.06em; }
   section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
@@ -71,6 +77,15 @@
     <div class="progress-fill" id="progress-fill"></div>
   </div>
   <p class="progress-label" id="progress-label">Calculating progress…</p>
+
+  <h2>JavaScriptCore build</h2>
+  <section class="live" id="live">
+    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="progress-fill" id="live-fill"></div>
+    </div>
+    <p class="progress-label" id="live-label">Waiting for build data…</p>
+    <p class="live-detail" id="live-detail">This box refreshes itself every 10 seconds.</p>
+  </section>
 
   <h2>Done and verified</h2>
   <section>
@@ -201,6 +216,69 @@
     document.getElementById('progress-label').textContent =
       percent + '% complete · ' + done + ' done · ' + active + ' active · ' + todo + ' not started';
     bar.setAttribute('aria-valuenow', String(percent));
+  })();
+
+  /* Live JavaScriptCore build. The page polls a small JSON file: the local
+   * copy while a build runs here, otherwise the copy GitHub Actions pushes to
+   * the build-status branch. Nothing has to be refreshed by hand. */
+  (() => {
+    const REMOTE = 'https://raw.githubusercontent.com/actuallyssstaris/playkit/build-status/build.json';
+    const fill = document.getElementById('live-fill');
+    const label = document.getElementById('live-label');
+    const detail = document.getElementById('live-detail');
+    const bar = document.querySelector('.live .progress');
+    if (!fill || !label) return;
+
+    async function load(url, bust) {
+      const response = await fetch(bust ? url + '?t=' + Date.now() : url,
+                                   { cache: 'no-store' });
+      if (!response.ok) throw new Error(String(response.status));
+      return response.json();
+    }
+
+    function render(state) {
+      const percent = Math.max(0, Math.min(100, state.percent || 0));
+      fill.style.width = percent + '%';
+      fill.classList.toggle('failed', state.status === 'failed');
+      fill.classList.toggle('done', state.status === 'done');
+      bar.setAttribute('aria-valuenow', String(percent));
+
+      const where = state.source === 'ci' ? 'GitHub Actions' : 'this machine';
+      if (state.status === 'failed') {
+        label.textContent = 'Build failed at ' + state.current + '/' + state.total +
+                            ' steps · ' + where;
+      } else if (state.status === 'done') {
+        label.textContent = 'Build complete · ' + where;
+      } else if (state.status === 'waiting') {
+        label.textContent = 'Waiting for the build to start · ' + where;
+      } else {
+        label.textContent = percent + '% · ' + state.current + '/' + state.total +
+                            ' steps · ' + where;
+      }
+      const when = state.updated ? new Date(state.updated).toLocaleTimeString() : '';
+      detail.textContent = [state.phase, state.step, when]
+        .filter(Boolean).join(' · ');
+    }
+
+    async function refresh() {
+      let state = null;
+      try { state = await load('build.json', false); } catch (error) { /* no local copy */ }
+      const stale = !state ||
+        Date.now() - Date.parse(state.updated) > 180000;
+      if (stale) {
+        try {
+          const remote = await load(REMOTE, true);
+          if (!state || Date.parse(remote.updated) > Date.parse(state.updated)) {
+            state = remote;
+          }
+        } catch (error) { /* offline or no build yet */ }
+      }
+      if (state) render(state);
+      else label.textContent = 'No build data yet · this box retries every 10 seconds';
+    }
+
+    refresh();
+    setInterval(refresh, 10000);
   })();
 </script>
 </body>

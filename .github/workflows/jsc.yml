@@ -18,7 +18,7 @@ on:
       - ".github/workflows/jsc.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: jsc-${{ github.ref }}
@@ -33,6 +33,7 @@ jobs:
     env:
       PS5_PAYLOAD_SDK: /opt/ps5-payload-sdk
       CCACHE_DIR: ${{ github.workspace }}/.ccache
+      BUILD_LOG: /tmp/jsc.log
 
     steps:
       - name: Check out source
@@ -72,8 +73,35 @@ jobs:
 
       - name: Build JavaScriptCore
         run: |
+          set -u
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # The status page reads build-status/build.json from
+          # raw.githubusercontent, so the percentage moves while the job runs.
+          # One force-pushed commit keeps the branch from filling with history.
+          publish() {
+            blob=$(git hash-object -w /tmp/build.json)
+            tree=$(printf '100644 blob %s\tbuild.json\n' "$blob" | git mktree)
+            commit=$(printf 'build progress\n' | git commit-tree "$tree")
+            git push --force --quiet origin "$commit:refs/heads/build-status" || true
+          }
+
+          ( while true; do
+              bash tools/build-progress.sh "$BUILD_LOG" /tmp/build.json ci
+              publish
+              sleep 30
+            done ) &
+          publisher=$!
+
           ccache --max-size=2G
-          bash tools/build-jsc.sh
+          status=0
+          bash -o pipefail -c 'bash tools/build-jsc.sh 2>&1 | tee "$BUILD_LOG"' || status=$?
+
+          kill "$publisher" 2>/dev/null || true
+          bash tools/build-progress.sh "$BUILD_LOG" /tmp/build.json ci
+          publish
+          exit "$status"
 
       - name: Show results
         run: |
